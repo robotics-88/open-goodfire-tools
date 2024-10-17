@@ -21,5 +21,5 @@ run `python process.py --input_path=<directory of pcd files> --output_path=<dest
 - [X] Aspect tif
 - [X] Slope tif
 - [X] Base Canopy Height Model tif
-- [ ] Segmented LAS file
+- [X] Segmented LAS file
 - [ ] Diameter at Breast Height csv
