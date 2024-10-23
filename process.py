@@ -59,8 +59,8 @@ if __name__ == '__main__':
 
 
         las_path = (output_directory / file.stem).with_suffix('.las')
-        print(f'Generating pcd file at {pcd_path}')
-        generate_las(pcd_path, las_path)
+        print(f'Generating las file at {las_path}')
+        # generate_las(pcd_path, las_path)
         
         dem_path = las_path.with_name(file.stem + '_dem.tif')
         print(f'Generating dem file at {dem_path}')
