@@ -106,6 +106,7 @@ def generate_dbh(las_file, csv_file):
     chm = None
 
     # Write to csv
+    log.info(f'Saving results to {csv_file}')
     with csv_file.open('w') as csv_file_stream:
         writer = csv.writer(csv_file_stream)
         writer.writerow(['X', 'Y', 'DBH', 'Height'])
