@@ -198,40 +198,40 @@ def estimate_dbh_for_tree_with_clusters(tree_slice, k):
     # Suppress scipy warnings (why is this so hard!!)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        centroids, labels = kmeans2(tree_slice, k, minit='++')
+        _, point_labels = kmeans2(tree_slice, k, minit='++')
     
     # Continue on empty cluster (no nead to repeat work done at k-1)
-    if len(np.unique(labels)) < k:
+    if len(np.unique(point_labels)) < k:
         return None
     
-    centroid_labels, centroid_point_count = np.unique(labels, return_counts=True)
-    biggest_centroid = centroid_labels[ np.argmax(centroid_point_count) ]
+    cluster_labels, cluster_point_count = np.unique(point_labels, return_counts=True)
+    biggest_cluster_label = cluster_labels[ np.argmax(cluster_point_count) ]
     
 
     # 3. Iterate through clusters to get all trunks (even though there should only be one)
-    for label in centroid_labels:
-        cluster_points = tree_slice[ labels==label ]
-        is_biggest_cluster = label == biggest_centroid
+    for cluster_label in cluster_labels:
+        points_in_cluster = tree_slice[ point_labels==cluster_label ]
+        is_biggest_cluster = cluster_label == biggest_cluster_label
 
 
         # 4. Compute metrics
         # Flatten - Now that we have rejected other trees, we can operate in 2D
-        cylinder_points = cluster_points[:,0:2]
+        points_in_cluster_2d = points_in_cluster[:,0:2]
         
         # Calculate center
-        centroid = cylinder_points.mean(axis=0)
+        centroid_2d = points_in_cluster_2d.mean(axis=0)
         
         # Calculate distance to center
-        distances = np.linalg.norm( cylinder_points - centroid, axis=1 )
+        point_distances_from_centroid = np.linalg.norm( points_in_cluster_2d - centroid_2d, axis=1 )
 
         # Calculate std_dev( distance to center )
-        distance_deviation = np.std(distances)
+        standard_deviation = np.std(point_distances_from_centroid)
 
         # Calcluate radius
-        radius = np.mean(distances)
+        diameter = 2*np.mean(point_distances_from_centroid)
 
         if is_biggest_cluster:
-            metrics_at_k = [ len(cluster_points), distance_deviation ]
+            metrics_at_k = [ len(points_in_cluster), standard_deviation ]
 
 
         
@@ -241,56 +241,56 @@ def estimate_dbh_for_tree_with_clusters(tree_slice, k):
         #    - Is the estimated size feasible?
         # If we find the largest cluster to be invalid, halt function, else continue looking at other clusters
         
-        if len(cluster_points) < MIN_POINTS_FOR_ESTIMATE:
-            log.debug(f'GUESS {label} REJECTED - INSUFFICIENT POINTS: {len(cluster_points)}')
+        if len(points_in_cluster) < MIN_POINTS_FOR_ESTIMATE:
+            log.debug(f'GUESS {cluster_label} REJECTED - INSUFFICIENT POINTS: {len(points_in_cluster)}')
             
             if is_biggest_cluster:
                 log.debug(f'Failed to find estimate with {k} clusters')
-                error_at_k = ('Insufficient points', len(cluster_points))
+                error_at_k = ('Insufficient points', len(points_in_cluster))
                 break
 
             continue
         
-        if distance_deviation > MAX_ESTIMATE_STANDARD_DEVIATION:
-            log.debug(f'GUESS {label} REJECTED - EXCESSIVE DEVIATION: {distance_deviation}')
+        if standard_deviation > MAX_ESTIMATE_STANDARD_DEVIATION:
+            log.debug(f'GUESS {cluster_label} REJECTED - EXCESSIVE DEVIATION: {standard_deviation}')
             
             if is_biggest_cluster:
                 log.debug(f'Failed to find estimate with {k} clusters')
-                error_at_k = ('Excessive deviation', distance_deviation)
+                error_at_k = ('Excessive deviation', standard_deviation)
                 break
 
             continue
 
-        if 2*radius < FEASIBLE_TREE_MIN:
-            log.debug(f'GUESS {label} REJECTED - TOO SMALL TREE SIZE: {2*radius}')
+        if diameter < FEASIBLE_TREE_MIN:
+            log.debug(f'GUESS {cluster_label} REJECTED - TOO SMALL TREE SIZE: {diameter}')
             
             if is_biggest_cluster:
                 log.debug(f'Failed to find estimate with {k} clusters')
-                error_at_k = ('Estimate too small', 2*radius)
+                error_at_k = ('Estimate too small', diameter)
                 break
             
             continue
 
-        if 2*radius > FEASIBLE_TREE_MAX:
-            log.debug(f'GUESS {label} REJECTED - TOO LARGE TREE SIZE: {2*radius}')
+        if diameter > FEASIBLE_TREE_MAX:
+            log.debug(f'GUESS {cluster_label} REJECTED - TOO LARGE TREE SIZE: {diameter}')
             
             if is_biggest_cluster:
                 log.debug(f'Failed to find estimate with {k} clusters')
-                error_at_k = ('Estimate too large', 2*radius)
+                error_at_k = ('Estimate too large', diameter)
                 break
             
             continue
 
         
         # 6. Reject outliers by two-sigma
-        filtered_cylinder_points = cylinder_points[ (distances-radius) < 2*distance_deviation ]
+        points_in_cluster_2d_filtered = points_in_cluster_2d[ (point_distances_from_centroid - (diameter/2)) < 2*standard_deviation ]
 
         # 7. Re-Generate circle from cluster location + average distance
-        true_center = filtered_cylinder_points.mean(axis=0)
-        true_distances = np.linalg.norm( filtered_cylinder_points - true_center, axis=1 )
-        true_radius = np.mean(true_distances)
+        final_centroid_2d = points_in_cluster_2d_filtered.mean(axis=0)
+        final_point_distances = np.linalg.norm( points_in_cluster_2d_filtered - final_centroid_2d, axis=1 )
+        final_diameter = 2*np.mean(final_point_distances)
 
-        guesses_at_k.append( (*true_center, 2*true_radius) )
+        guesses_at_k.append( (*final_centroid_2d, final_diameter) )
 
 
     return guesses_at_k, error_at_k, metrics_at_k

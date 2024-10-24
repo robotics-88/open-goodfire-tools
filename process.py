@@ -14,7 +14,7 @@ def generate_las(pcd_path, las_path):
 def generate_dem(las_path, dem_path):
     # Use Rscript command to generate las.
     # Optionally, overwrite the existing dem with -o
-    # TODO: restructure generate_dem.R to accept python style arguments
+    # TODO: restructure R scripts to accept python style arguments
     return subprocess.call(['./generate_dem.R', las_path, dem_path])
     
 def generate_slope(dem_path, slope_path):
