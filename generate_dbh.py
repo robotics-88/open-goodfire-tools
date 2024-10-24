@@ -1,36 +1,39 @@
-import numpy as np
-import laspy
-from scipy.cluster.vq import kmeans2
-import matplotlib.pyplot as plt
-
-from fastlog import log
-import warnings
-import argparse
-
-import utils.plotting
 import utils.argument_actions
+import utils.plotting
 
+import laspy
+import matplotlib.pyplot as plt
+import numpy as np
+from fastlog import log
+from scipy.cluster.vq import kmeans2
+
+import argparse
+import csv
+import warnings
 from pathlib import Path
 
 
 
+
+
+# Config Parameters
+
 # DBH is measured at 1.35m, for some reason
 BREAST_HEIGHT = 1.35
 SEARCH_REGION_HEIGHT = 1
-# Config Parameters
 # The feasible range of tree diameters
 FEASIBLE_TREE_MIN = 0.1
 FEASIBLE_TREE_MAX = 3
 # The maximum number of trunks to look for
 MAX_TRUNKS = 4
-
-
+# How many points we require to compute an estimate
 MIN_POINTS_FOR_ESTIMATE = 50
+# Maximum standard deviation in meters (this should probably be smaller)
 MAX_ESTIMATE_STANDARD_DEVIATION = 1.0
-
-
+# How much weight to give number of points in the scoring function
 POINTS_WEIGHT = 0.01
-DEVIATION_WEIGHT = 100
+# How much weight to give standard deviation in the scoring function
+DEVIATION_WEIGHT = -100
 
 log_level_options = [log.WARNING, log.INFO, log.DEBUG]
 
@@ -38,6 +41,7 @@ log_level_options = [log.WARNING, log.INFO, log.DEBUG]
 
 
 def generate_dbh(las_file, csv_file):
+    log.info(f'Loading .las file from {las_file}')
     with laspy.open(las_file) as las_file_stream:
         las = las_file_stream.read()
 
@@ -48,55 +52,69 @@ def generate_dbh(las_file, csv_file):
     error_list = []
 
     # For each tree...
+    log.info('Computing DBH...')
     for tree_id in tree_ids:
-        # id 7,9,12,17,18,22,26,28,29,30,34,37,39,!48,!50 is well formed
-        #                  ^
-        # Get associated points
-        tree_id = 22
-        log.debug(f'Analyzing tree {tree_id}')
+        
+        log.debug(f'Analyzing tree {int(tree_id)}')
 
         with log.indent():
             tree = las.points[ las.points["treeID"] == tree_id ]
 
-
             # Normalize by ground level
             normalize_tree(tree)
 
+            dbh_estimates, error = estimate_dbh_for_tree(tree)
 
-            # TODO: handle errors and failures
-            dbh, error = estimate_dbh_for_tree(tree)
-            if dbh is None: continue
-            
-            print(dbh)
-            dbh = dbh[0]
+            # Function may return None if it does no work
+            if dbh_estimates is None:
+                error_list.append(error)
+                continue
+                
+            # Else, store result
+            dbh_list.extend( dbh_estimates )
 
-            
-            dbh_list.append( dbh )
-            fig = plt.figure()
-            ax = fig.add_subplot(projection='3d')
+            # Optionally plot each resultant estimate
+            if VISUALIZE_FLAG:
+                fig = plt.figure()
+                ax = fig.add_subplot(projection='3d')
 
-            utils.plotting.plot_tree(ax, tree)
-            utils.plotting.plot_circle(ax, *dbh)
-            plt.show()
+                utils.plotting.plot_tree(ax, tree)
+                for dbh in dbh_estimates:
+                    utils.plotting.plot_circle(ax, *dbh)
+                    utils.plotting.plot_circle(ax, *dbh[0:2], 3)
+                plt.show()
 
-            quit()
+    # Discard large LAS object from memory
+    las = None
 
-
-    # TODO: log the total number of DBH's estimated, compare to total number of segmented trees
-    # log.info(f'Generated {} diameter estimates from {len(tree_ids)} segmented trees')
+    # log the total number of estimates generated
+    log.success(f'Generated {len(dbh_list)} diameter estimates from a total of {len(tree_ids)} segmented trees')
     
-    # TODO: log the total number of segmented trees that could not be processed and the adjacent reasons
-    # log.info(f'Could not process {} segmented trees, for the following reasons:')
-    # with log.indent():
-    #     for reason in reasons:
-    #         log.info(f'{reason} : {count}')
+    # log the total number of segmented trees that could not be processed and the adjacent reasons
+    log.info(f'Could not process {len(error_list)} segmented trees, for the following reasons:')
+    with log.indent():
+        error_list_np = np.array(error_list)
+        reasons, counts = np.unique( error_list_np[:,0], return_counts=True )
+        for reason, count in zip(reasons, counts):
+            log.info(f'{reason} : {count}')
 
-    # TODO: write to csv
+    # TODO: Load CHM
+    chm = None
+    heights = get_canopy_height_at_locations(dbh_list, chm)
+    
+    # Discard large CHM object from memory
+    chm = None
 
+    # Write to csv
+    with csv_file.open('w') as csv_file_stream:
+        writer = csv.writer(csv_file_stream)
+        writer.writerow(['X', 'Y', 'DBH', 'Height'])
+        for dbh, height in zip(dbh_list, heights):
+            # placeholder height
+            writer.writerow([*dbh, height])
 
 def normalize_tree(tree):
     tree['z'] = tree['z'] - min(tree['z'])
-
 
 def estimate_dbh_for_tree(tree):
     '''
@@ -164,7 +182,7 @@ def estimate_dbh_for_tree(tree):
     #    - sandard deviation in distance from cluster
 
     def score_function(num_points, sigma):
-        return num_points*POINTS_WEIGHT - sigma*DEVIATION_WEIGHT
+        return num_points*POINTS_WEIGHT + sigma*DEVIATION_WEIGHT
 
     # If valid guesses were generated
     if len(guesses) != 0:
@@ -187,7 +205,6 @@ def estimate_dbh_for_tree(tree):
         # Find + return winner
         log.debug(f'Returning set { np.argmax(scores) }')
         return None, errors[ np.argmax(scores) ][0]
-
 
 def estimate_dbh_for_tree_with_clusters(tree_slice, k):
     guesses_at_k = []
@@ -294,6 +311,13 @@ def estimate_dbh_for_tree_with_clusters(tree_slice, k):
 
 
     return guesses_at_k, error_at_k, metrics_at_k
+
+def get_canopy_height_at_locations(dhm_list, chm):
+    # TODO: figure out how to process chm files
+    dhm_list_np = np.array(dhm_list)
+
+    return [1]*len(dhm_list)
+
 
 
 if __name__ == '__main__':

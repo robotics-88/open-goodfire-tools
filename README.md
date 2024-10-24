@@ -20,11 +20,12 @@ See the above linked documentation for links and notes on dependencies
 - `source env/bin/activate`
 
 ## Install python dependencies
-- `pip install laspy numpy argparse`
-
+- `pip install -r requirements.txt`
 
 
 # Usage
+
+## Primary Processing Script
 
 run `python process.py --input_path=<directory of pcd files> --output_path=<destination>`. The defaults for these values are `data/input` and `data/output`. The tool will detect all `.pcd` files in the specfied input directory, and populate the output directory with the following data types:
 
@@ -35,3 +36,10 @@ run `python process.py --input_path=<directory of pcd files> --output_path=<dest
 - [X] Base Canopy Height Model tif
 - [X] Segmented LAS file
 - [ ] Diameter at Breast Height csv
+
+
+## DBH generation script
+
+Run `python generate_dbh.py -v`. This will load a default segmented `.las` file, calculate the DBH for every tree it can find, and write the result to a file of the same name, with the `.csv` extension.
+- `-v`, `-vv`, `--verbosity 1/2`: these flags / args will increase the verbosity of the program and give you more visibility into what its doing. I recommend running with verbosity=1 for the most relevant information
+- `--visualize`: this flag will tell the program to pause and visualize every processed tree. This is also a good way to get a sense of what its doing. The program will continue once you close the plot.

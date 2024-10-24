@@ -10,7 +10,6 @@ def plot_circle(ax, x, y, d):
     ys = np.cos(theta)
 
     ax.scatter(r*xs + x, r*ys + y, [1.35]*201)
-    ax.scatter(2*xs + x, 2*ys + y, [1.35]*201)
     
 
 def plot_tree(ax, tree):
