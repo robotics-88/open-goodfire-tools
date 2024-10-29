@@ -22,6 +22,11 @@ See the above linked documentation for links and notes on dependencies
 ## Install python dependencies
 - `pip install -r requirements.txt`
 
+## Install R dependencies
+- `RCSF`
+- `lidR`
+
+
 
 # Usage
 
