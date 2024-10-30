@@ -6,6 +6,4 @@ argparse
 fastlog
 laspy
 
-# only one of these
-geotiff
 rasterio
