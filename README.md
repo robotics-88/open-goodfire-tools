@@ -32,7 +32,7 @@ See the above linked documentation for links and notes on dependencies
 
 ## Primary Processing Script
 
-run `python process.py --input_path=<directory of pcd files> --output_path=<destination>`. The defaults for these values are `data/input` and `data/output`. The tool will detect all `.pcd` files in the specfied input directory, and populate the output directory with the following data types:
+run `python process.py --input_location=<directory of pcd files> --output_location=<destination>`. The defaults for these values are `data/input` and `data/output`. The tool will detect all `.pcd` files in the specfied input directory, and populate the output directory with the following data types:
 
 - [X] LAS file
 - [X] DEM tif

@@ -1,6 +1,7 @@
 import utils.argument_actions
 import utils.plotting
 
+import geotiff
 import laspy
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,10 +41,11 @@ log_level_options = [log.WARNING, log.INFO, log.DEBUG]
 
 
 
-def generate_dbh(las_file, csv_file):
+def generate_dbh(las_file, chm_file, csv_file):
     log.info(f'Loading .las file from {las_file}')
     with laspy.open(las_file) as las_file_stream:
         las = las_file_stream.read()
+        las_header = las.header
 
     # Get all unique Tree ID's
     tree_ids = np.unique( las.points["treeID"] )
@@ -98,9 +100,11 @@ def generate_dbh(las_file, csv_file):
         for reason, count in zip(reasons, counts):
             log.info(f'{reason} : {count}')
 
-    # TODO: Load CHM
-    chm = None
-    heights = get_canopy_height_at_locations(dbh_list, chm)
+    # Load CHM
+    chm = geotiff.GeoTiff(chm_file)
+
+    # Use it to get tree heights
+    heights = get_canopy_height_at_locations(dbh_list, las_header, chm)
     
     # Discard large CHM object from memory
     chm = None
@@ -313,9 +317,15 @@ def estimate_dbh_for_tree_with_clusters(tree_slice, k):
 
     return guesses_at_k, error_at_k, metrics_at_k
 
-def get_canopy_height_at_locations(dhm_list, chm):
+def get_canopy_height_at_locations(dhm_list, las_header, chm):
     # TODO: figure out how to process chm files
-    dhm_list_np = np.array(dhm_list)
+    # dhm_list_np = np.array(dhm_list)
+    
+    # c = geotiff.GeoTiff()
+
+    print(chm._crs_code)
+    # for dhm in dhm_list:
+    #     region_data = chm.read
 
     return [1]*len(dhm_list)
 
@@ -329,6 +339,7 @@ if __name__ == '__main__':
     parser.add_argument('--visualize', action='store_true')
 
     parser.add_argument('--input_path', action=utils.argument_actions.StorePathAction, default=Path('data/output/illinois_utm/illinois_utm_segmented.las'))
+    parser.add_argument('--chm_path', action=utils.argument_actions.StorePathAction, default=Path('data/output/illinois_utm/illinois_utm_chm.tif'))
     parser.add_argument('--output_path', action=utils.argument_actions.StorePathAction, default=None)
 
     args = parser.parse_args()
@@ -345,5 +356,9 @@ if __name__ == '__main__':
     if not args.output_path:
         args.output_path = Path(args.input_path.with_suffix('.csv'))
 
+    # TODO: upfront sanity checks
+    # - confirm paths exist
+    # - confirm paths are correct types (load chm object)
 
-    generate_dbh(args.input_path, args.output_path)
+
+    generate_dbh(args.input_path, args.chm_path, args.output_path)
