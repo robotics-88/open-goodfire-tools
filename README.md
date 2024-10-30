@@ -40,7 +40,7 @@ run `python process.py --input_location=<directory of pcd files> --output_locati
 - [X] Slope tif
 - [X] Base Canopy Height Model tif
 - [X] Segmented LAS file
-- [ ] Diameter at Breast Height csv
+- [X] Diameter at Breast Height csv
 
 
 ## DBH generation script
