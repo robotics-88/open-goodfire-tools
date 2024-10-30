@@ -1,7 +1,7 @@
 import utils.argument_actions
 import utils.plotting
 
-import geotiff
+import rasterio
 import laspy
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,9 +12,6 @@ import argparse
 import csv
 import warnings
 from pathlib import Path
-
-
-
 
 
 # Config Parameters
@@ -36,16 +33,16 @@ POINTS_WEIGHT = 0.01
 # How much weight to give standard deviation in the scoring function
 DEVIATION_WEIGHT = -100
 
+# Flag to show plots of each tree
+VISUALIZE_FLAG = False
+
 log_level_options = [log.WARNING, log.INFO, log.DEBUG]
 
 
-
-
-def generate_dbh(las_file, chm_file, csv_file):
+def generate_dbh(las_file, chm_file, dem_file, csv_file):
     log.info(f'Loading .las file from {las_file}')
     with laspy.open(las_file) as las_file_stream:
         las = las_file_stream.read()
-        las_header = las.header
 
     # Get all unique Tree ID's
     tree_ids = np.unique( las.points["treeID"] )
@@ -65,6 +62,7 @@ def generate_dbh(las_file, chm_file, csv_file):
             # Normalize by ground level
             normalize_tree(tree)
 
+            # Do estimate
             dbh_estimates, error = estimate_dbh_for_tree(tree)
 
             # Function may return None if it does no work
@@ -100,14 +98,9 @@ def generate_dbh(las_file, chm_file, csv_file):
         for reason, count in zip(reasons, counts):
             log.info(f'{reason} : {count}')
 
-    # Load CHM
-    chm = geotiff.GeoTiff(chm_file)
-
     # Use it to get tree heights
-    heights = get_canopy_height_at_locations(dbh_list, las_header, chm)
-    
-    # Discard large CHM object from memory
-    chm = None
+    log.info(f'Computing tree heights...')
+    heights = get_canopy_height_at_locations(dbh_list, chm_file, dem_file)
 
     # Write to csv
     log.info(f'Saving results to {csv_file}')
@@ -317,17 +310,25 @@ def estimate_dbh_for_tree_with_clusters(tree_slice, k):
 
     return guesses_at_k, error_at_k, metrics_at_k
 
-def get_canopy_height_at_locations(dhm_list, las_header, chm):
-    # TODO: figure out how to process chm files
-    # dhm_list_np = np.array(dhm_list)
+def get_canopy_height_at_locations(dhm_list, chm_file, dem_file):
     
-    # c = geotiff.GeoTiff()
+    heights = []
+    
+    # Load CHM
+    with rasterio.open(chm_file) as chm, rasterio.open(dem_file) as dem:
+        chm_data = chm.read(1)
+        dem_data = dem.read(1)
 
-    print(chm._crs_code)
-    # for dhm in dhm_list:
-    #     region_data = chm.read
+        for dhm in dhm_list:
+            # Get tree height
+            # .index converts geospatial coords to pixel index
 
-    return [1]*len(dhm_list)
+            canopy_base_height = chm_data[ chm.index(dhm[0], dhm[1]) ]
+            elevation = dem_data[ dem.index(dhm[0], dhm[1]) ]
+
+            heights.append( canopy_base_height - elevation )
+
+    return heights
 
 
 
@@ -340,6 +341,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--input_path', action=utils.argument_actions.StorePathAction, default=Path('data/output/illinois_utm/illinois_utm_segmented.las'))
     parser.add_argument('--chm_path', action=utils.argument_actions.StorePathAction, default=Path('data/output/illinois_utm/illinois_utm_chm.tif'))
+    parser.add_argument('--dem_path', action=utils.argument_actions.StorePathAction, default=Path('data/output/illinois_utm/illinois_utm_dem.tif'))
     parser.add_argument('--output_path', action=utils.argument_actions.StorePathAction, default=None)
 
     args = parser.parse_args()
@@ -361,4 +363,4 @@ if __name__ == '__main__':
     # - confirm paths are correct types (load chm object)
 
 
-    generate_dbh(args.input_path, args.chm_path, args.output_path)
+    generate_dbh(args.input_path, args.chm_path, args.dem_path, args.output_path)
