@@ -18,7 +18,6 @@ def split_inputs():
 
 def generate_las(pcd_path, las_path):
     # Use pdal command to generate las. call blocks until command finishes.
-    print('pdal', 'translate', pcd_path, las_path)
     return subprocess.call(['pdal', 'translate', pcd_path, las_path])
 
 def generate_dem(las_path, dem_path):
@@ -45,7 +44,7 @@ def generate_diameter_at_base_height(las_segmented_path, chm_path,  dem_path, db
     return generate_dbh.generate_dbh(las_segmented_path, chm_path,  dem_path, dbh_path)
 
 def generate_trunk_density_file(dbh_path, td_path):
-    return generate_trunk_density.generate_trunk_density(dbh_path, td_path)
+    return generate_trunk_density.generate_trunk_density(dbh_path, dem_path, td_path)
 
 
 if __name__ == '__main__':
@@ -56,6 +55,8 @@ if __name__ == '__main__':
 
     parser.add_argument('-v', action='count')
     parser.add_argument('--verbosity', type=int, default=1)
+
+    parser.add_argument('--force-steps', type=int, default=1)
     
     args = parser.parse_args()
 
@@ -70,16 +71,17 @@ if __name__ == '__main__':
         log.info(f'Processing input file {file}')
         with log.indent():
 
-            # TODO: add re-do parameter to specify which steps to force-redo and which steps to only do if necessary
-            # TODO: skip steps below if generated file already exists
-
             pcd_path = file
 
             output_directory = args.output_location / file.stem
             output_directory.mkdir(parents=True, exist_ok=True)
 
+            step = 8
 
             las_path = (output_directory / file.stem).with_suffix('.las')
+            step = step-1
+            if step < args.force_steps:
+                las_path.unlink(missing_ok=True)
             if las_path.exists():
                 log.info(f'Skipping - Generate las file: already exists at {las_path}')
             else:
@@ -88,6 +90,9 @@ if __name__ == '__main__':
             
 
             dem_path = las_path.with_name(file.stem + '_dem.tif')
+            step = step-1
+            if step < args.force_steps:
+                dem_path.unlink(missing_ok=True)
             if dem_path.exists():
                 log.info(f'Skipping - Generate dem file: already exists at {dem_path}')
             else:
@@ -96,6 +101,9 @@ if __name__ == '__main__':
             
 
             slope_path = las_path.with_name(file.stem + '_slope.tif')
+            step = step-1
+            if step < args.force_steps:
+                slope_path.unlink(missing_ok=True)
             if slope_path.exists():
                 log.info(f'Skipping - Generate slope file: already exists at {slope_path}')
             else:
@@ -104,6 +112,9 @@ if __name__ == '__main__':
             
 
             aspect_path = las_path.with_name(file.stem + '_aspect.tif')
+            step = step-1
+            if step < args.force_steps:
+                aspect_path.unlink(missing_ok=True)
             if aspect_path.exists():
                 log.info(f'Skipping - Generate aspect file: already exists at {aspect_path}')
             else:
@@ -112,6 +123,9 @@ if __name__ == '__main__':
 
 
             chm_path = las_path.with_name(file.stem + '_chm.tif')
+            step = step-1
+            if step < args.force_steps:
+                chm_path.unlink(missing_ok=True)
             if chm_path.exists():
                 log.info(f'Skipping - Generate chm file: already exists at {chm_path}')
             else:
@@ -120,6 +134,9 @@ if __name__ == '__main__':
 
 
             las_segmented_path = las_path.with_name(file.stem + '_segmented.las')
+            step = step-1
+            if step < args.force_steps:
+                las_segmented_path.unlink(missing_ok=True)
             if las_segmented_path.exists():
                 log.info(f'Skipping - Generate segmented las file: already exists at {las_segmented_path}')
             else:
@@ -128,6 +145,9 @@ if __name__ == '__main__':
 
 
             dbh_path = las_path.with_name(file.stem + '_dbh.csv')
+            step = step-1
+            if step < args.force_steps:
+                dbh_path.unlink(missing_ok=True)
             if dbh_path.exists():
                 log.info(f'Skipping - Generate dbh file: already exists at {dbh_path}')
             else:
@@ -135,7 +155,10 @@ if __name__ == '__main__':
                 generate_diameter_at_base_height(las_segmented_path, chm_path,  dem_path, dbh_path)
 
 
-            trunk_density_path = las_path.with_name(file.stem + '_trunk_density.csv')
+            trunk_density_path = las_path.with_name(file.stem + '_trunk_density.tif')
+            step = step-1
+            if step < args.force_steps:
+                trunk_density_path.unlink(missing_ok=True)
             if trunk_density_path.exists():
                 log.info(f'Skipping - Generate density file: already exists at {trunk_density_path}')
             else:
