@@ -7,3 +7,5 @@ fastlog
 laspy
 
 rasterio
+
+skimage
