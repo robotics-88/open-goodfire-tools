@@ -138,12 +138,11 @@ def estimate_dbh_for_tree(tree):
     # convert to np array
     tree = np.array([tree['x'], tree['y'], tree['z']])
     
-    # slice
+    # Slice and filter
     slice_top = BREAST_HEIGHT + SEARCH_REGION_HEIGHT/2
     slice_bottom = BREAST_HEIGHT - SEARCH_REGION_HEIGHT/2
-    mask = np.vectorize(lambda z: slice_bottom < z and z < slice_top)(tree[2])
 
-    # Transpose and filter. TODO: Transpose earlier for clarity
+    mask = np.vectorize(lambda z: slice_bottom < z and z < slice_top)(tree[2])
     tree_slice = tree.T[mask]
 
 
@@ -310,7 +309,7 @@ def estimate_dbh_for_tree_with_clusters(tree_slice, k):
 
     return guesses_at_k, error_at_k, metrics_at_k
 
-def get_canopy_height_at_locations(dhm_list, chm_file, dem_file):
+def get_canopy_height_at_locations(dbh_list, chm_file, dem_file):
     
     heights = []
     
@@ -319,7 +318,7 @@ def get_canopy_height_at_locations(dhm_list, chm_file, dem_file):
         chm_data = chm.read(1)
         dem_data = dem.read(1)
 
-        for dhm in dhm_list:
+        for dhm in dbh_list:
             # Get tree height
             # .index converts geospatial coords to pixel index
 
