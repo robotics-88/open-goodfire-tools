@@ -314,6 +314,7 @@ def get_canopy_height_at_locations(dbh_list, chm_file, dem_file):
     heights = []
     
     # Load CHM
+    # TODO: I should only load this once, instead of loading it into memory every tree
     with rasterio.open(chm_file) as chm, rasterio.open(dem_file) as dem:
         chm_data = chm.read(1)
         dem_data = dem.read(1)

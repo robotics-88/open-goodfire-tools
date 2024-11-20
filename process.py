@@ -8,17 +8,27 @@ from pathlib import Path
 
 from fastlog import log
 
+import rasterio
+
 
 log_level_options = [log.WARNING, log.INFO, log.DEBUG]
 
+
+def filter_outliers(pcd_path, las_path, crs):
+    # filter outliers and generate las
+    return subprocess.call(['pdal', 'pipeline', 'outlier_rejection.json', '--progress=/dev/stdout',\
+                            '--readers.pcd.filename', pcd_path,\
+                            '--writers.las.filename', las_path,\
+                            '--writers.las.a_srs', f'EPSG:{crs}'])
+
+# def generate_las(pcd_path, las_path):
+#     # Use pdal command to generate las. call blocks until command finishes.
+#     return subprocess.call(['pdal', 'translate', pcd_path, las_path])
 
 def split_inputs():
     # TODO: accept a pcd or las and split it into multiple tiled subcomponents
     pass
 
-def generate_las(pcd_path, las_path):
-    # Use pdal command to generate las. call blocks until command finishes.
-    return subprocess.call(['pdal', 'translate', pcd_path, las_path])
 
 def generate_dem(las_path, dem_path):
     # Use Rscript command to generate las.
@@ -72,24 +82,38 @@ if __name__ == '__main__':
         with log.indent():
 
             pcd_path = file
-
-            output_directory = args.output_location / file.stem
-            output_directory.mkdir(parents=True, exist_ok=True)
+            filename, crs = file.stem.rsplit('_', 1)
 
             step = 8
 
-            las_path = (output_directory / file.stem).with_suffix('.las')
+            # TODO: make threadpool for each input file
+            # TODO: check for input flammap data
+            # TODO: make new flammap data
+
+            output_directory = args.output_location / filename
+            output_directory.mkdir(parents=True, exist_ok=True)
+
+            las_path = (output_directory / filename).with_suffix('.las')
+
+
+            dem_path =              las_path.with_name(filename + '_dem.tif')
+            slope_path =            las_path.with_name(filename + '_slope.tif')
+            aspect_path =           las_path.with_name(filename + '_aspect.tif')
+            chm_path =              las_path.with_name(filename + '_chm.tif')
+            las_segmented_path =    las_path.with_name(filename + '_segmented.las')
+            dbh_path =              las_path.with_name(filename + '_dbh.csv')
+            trunk_density_path =    las_path.with_name(filename + '_trunk_density.tif')
+
             step = step-1
             if step < args.force_steps:
                 las_path.unlink(missing_ok=True)
             if las_path.exists():
                 log.info(f'Skipping - Generate las file: already exists at {las_path}')
             else:
-                log.info(f'Generating las file at {las_path}')
-                generate_las(pcd_path, las_path)
-            
+                log.info(f'Generating filtered las file at {las_path}')
+                log.info('This will take some time...')
+                filter_outliers(pcd_path, las_path, crs)
 
-            dem_path = las_path.with_name(file.stem + '_dem.tif')
             step = step-1
             if step < args.force_steps:
                 dem_path.unlink(missing_ok=True)
@@ -100,7 +124,6 @@ if __name__ == '__main__':
                 generate_dem(las_path, dem_path)
             
 
-            slope_path = las_path.with_name(file.stem + '_slope.tif')
             step = step-1
             if step < args.force_steps:
                 slope_path.unlink(missing_ok=True)
@@ -111,7 +134,6 @@ if __name__ == '__main__':
                 generate_slope(dem_path, slope_path)
             
 
-            aspect_path = las_path.with_name(file.stem + '_aspect.tif')
             step = step-1
             if step < args.force_steps:
                 aspect_path.unlink(missing_ok=True)
@@ -122,7 +144,6 @@ if __name__ == '__main__':
                 generate_aspect(dem_path, aspect_path)
 
 
-            chm_path = las_path.with_name(file.stem + '_chm.tif')
             step = step-1
             if step < args.force_steps:
                 chm_path.unlink(missing_ok=True)
@@ -133,7 +154,6 @@ if __name__ == '__main__':
                 generate_base_canopy_height_model(las_path, chm_path)
 
 
-            las_segmented_path = las_path.with_name(file.stem + '_segmented.las')
             step = step-1
             if step < args.force_steps:
                 las_segmented_path.unlink(missing_ok=True)
@@ -144,7 +164,6 @@ if __name__ == '__main__':
                 generate_segmented_las(las_path, chm_path, las_segmented_path)
 
 
-            dbh_path = las_path.with_name(file.stem + '_dbh.csv')
             step = step-1
             if step < args.force_steps:
                 dbh_path.unlink(missing_ok=True)
@@ -155,7 +174,6 @@ if __name__ == '__main__':
                 generate_diameter_at_base_height(las_segmented_path, chm_path,  dem_path, dbh_path)
 
 
-            trunk_density_path = las_path.with_name(file.stem + '_trunk_density.tif')
             step = step-1
             if step < args.force_steps:
                 trunk_density_path.unlink(missing_ok=True)
@@ -164,3 +182,23 @@ if __name__ == '__main__':
             else:
                 log.info(f'Generating trunk density file at {trunk_density_path}')
                 generate_trunk_density_file(dbh_path, trunk_density_path)
+
+
+            # TODO: get lat-long bounds with rasterio
+            # with rasterio.open( dem_path ) as dem_file:
+            #     bounds = 
+
+            # TODO: check that flammap data exists
+
+
+            # TODO: change flammap data into UTM frame
+            # rasterio.warp.reproject or gdalwarp or gdal_translate
+
+
+            # TODO: Downsample flammap data
+            # https://gdal.org/en/latest/programs/gdal_translate.html
+            #                   v maybe bilinear?
+            # gdal_translate -r average -co COMPRESS=LZW -outsize 20% 20% raw_image.tif resampled_image.tif
+            
+            # TODO: Merge layers
+

@@ -1,0 +1,23 @@
+[
+    "readers.pcd",
+
+    {
+        "type":"filters.outlier",
+        "method":"radius",
+        "radius":1.0,
+        "min_k":4
+    },
+    {
+        "type":"filters.range",
+        "limits":"Classification![7:7]"
+    },
+
+    
+    {
+        "type" : "writers.las",
+        "minor_version": 1,
+        "a_srs": "EPSG:32615",
+        "filename" : "out.las"
+    }
+
+]
