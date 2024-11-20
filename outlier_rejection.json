@@ -13,11 +13,6 @@
     },
 
     
-    {
-        "type" : "writers.las",
-        "minor_version": 1,
-        "a_srs": "EPSG:32615",
-        "filename" : "out.las"
-    }
+    "writers.las"
 
 ]
