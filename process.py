@@ -1,14 +1,15 @@
 import generate_dbh
 import generate_trunk_density
+
 import utils.argument_actions
+import utils.geotiff_utils
+
+from fastlog import log
 
 import argparse
 import subprocess
 from pathlib import Path
 
-from fastlog import log
-
-import rasterio
 
 
 log_level_options = [log.WARNING, log.INFO, log.DEBUG]
@@ -66,7 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('-v', action='count')
     parser.add_argument('--verbosity', type=int, default=1)
 
-    parser.add_argument('--force-steps', type=int, default=1)
+    parser.add_argument('--force-steps', type=int, default=0)
     
     args = parser.parse_args()
 
@@ -75,7 +76,9 @@ if __name__ == '__main__':
     verbosity = min(verbosity, len(log_level_options)-1)
     log.setLevel(log_level_options[verbosity])
 
+
     # TODO: check dependencies
+    # TODO: make threadpool for each input file
 
     for file in args.input_location.glob('**/*.pcd'):
         log.info(f'Processing input file {file}')
@@ -86,9 +89,6 @@ if __name__ == '__main__':
 
             step = 8
 
-            # TODO: make threadpool for each input file
-            # TODO: check for input flammap data
-            # TODO: make new flammap data
 
             output_directory = args.output_location / filename
             output_directory.mkdir(parents=True, exist_ok=True)
@@ -184,12 +184,13 @@ if __name__ == '__main__':
                 generate_trunk_density_file(dbh_path, trunk_density_path)
 
 
-            # TODO: get lat-long bounds with rasterio
-            # with rasterio.open( dem_path ) as dem_file:
-            #     bounds = 
+            # Get lat-long bounds with rasterio
+            print(utils.geotiff_utils.get_lat_long_bounds(dem_path))
+            quit()
 
             # TODO: check that flammap data exists
 
+            # TODO: If flammap data does not exist, pull it from appropriate source
 
             # TODO: change flammap data into UTM frame
             # rasterio.warp.reproject or gdalwarp or gdal_translate
