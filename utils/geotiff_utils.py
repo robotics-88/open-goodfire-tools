@@ -8,11 +8,11 @@ def get_lat_long_bounds(geotiff_path):
 
         print(f'Original bounds in {geotiff_file.crs}')
         print(geotiff_file.bounds)
-        print(f'Converted bounds in {rasterio.crs.CRS.from_epsg(4328)}')
-        print(rasterio.warp.transform_bounds(geotiff_file.crs, rasterio.crs.CRS.from_epsg(4328), *geotiff_file.bounds))
+        print(f'Converted bounds in {rasterio.crs.CRS.from_epsg(4326)}')
+        print(rasterio.warp.transform_bounds(geotiff_file.crs, rasterio.crs.CRS.from_epsg(4326), *geotiff_file.bounds))
     
 
-        return rasterio.warp.transform_bounds(geotiff_file.crs, rasterio.crs.CRS.from_epsg(4328), *geotiff_file.bounds)
+        return rasterio.warp.transform_bounds(geotiff_file.crs, rasterio.crs.CRS.from_epsg(4326), *geotiff_file.bounds)
     
 
 def reporoject(geotiff, dst_crs):
