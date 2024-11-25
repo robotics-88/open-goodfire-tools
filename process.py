@@ -10,6 +10,9 @@ import argparse
 import subprocess
 from pathlib import Path
 
+import shutil
+import rasterio
+
 
 
 log_level_options = [log.WARNING, log.INFO, log.DEBUG]
@@ -17,6 +20,7 @@ log_level_options = [log.WARNING, log.INFO, log.DEBUG]
 
 def filter_outliers(pcd_path, las_path, crs):
     # filter outliers and generate las
+    # TODO: make this faster jesus christ. This should be about 5 minutes
     return subprocess.call(['pdal', 'pipeline', 'outlier_rejection.json', '--progress=/dev/stdout',\
                             '--readers.pcd.filename', pcd_path,\
                             '--writers.las.filename', las_path,\
@@ -29,7 +33,6 @@ def filter_outliers(pcd_path, las_path, crs):
 def split_inputs():
     # TODO: accept a pcd or las and split it into multiple tiled subcomponents
     pass
-
 
 def generate_dem(las_path, dem_path):
     # Use Rscript command to generate las.
@@ -57,6 +60,77 @@ def generate_diameter_at_base_height(las_segmented_path, chm_path,  dem_path, db
 def generate_trunk_density_file(dbh_path, td_path):
     return generate_trunk_density.generate_trunk_density(dbh_path, dem_path, td_path)
 
+def generate_flammap_data(zip_in_path, zip_tmp_path, dem_path, flammap_path):
+    # Get lat-long bounds with rasterio
+    dem_bounds = utils.geotiff_utils.get_lat_long_bounds(dem_path)
+    
+    # Check that flammap data exists
+    if not zip_in_path.exists():
+        # TODO: If flammap data does not exist, pull it from appropriate source
+        log.warning(f'Use Flammap to download data for these bounds: {dem_bounds}')
+        quit()
+
+    # Unzip
+    shutil.unpack_archive(zip_in_path, zip_tmp_path)
+
+    # Find flammap tif data (just grab the first file with a .tif extension)
+    tif_path = next(zip_tmp_path.glob('*.tif'))
+
+    # Move Flammap tif data to correct location
+    shutil.move( str( tif_path ), str(flammap_path) )
+
+def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path):
+    
+    # Open input files
+    with rasterio.open(flammap_path) as flammap_file, \
+         rasterio.open(dem_path) as dem_file, \
+         rasterio.open(chm_path) as chm_file, \
+         rasterio.open(aspect_path) as aspect_file, \
+         rasterio.open(slope_path) as slope_file:
+
+        # Defining the goal:
+        # I want to end up with one geotiff file
+        # It should contain the layer descriptions from the flammap file
+        # It should be in the CRS and shape of the smallest of our input files (we will just use the DEM file for now)
+        # It should contain all of our input layers, and fill the rest with flammap data
+        #       said flammap data must be rescaled to target CRS and shape
+
+        target_crs = dem_file.crs
+        target_shape = dem_file.shape
+        target_transform = dem_file.transform
+
+        # Descriptions
+        # ('US_ELEV2020', 'US_SLPD2020', 'US_ASP2020', 'US_240FBFM40', 'US_240CC', 'US_240CH', 'US_240CBH', 'US_240CBD')
+        desc_map = {
+            'US_ELEV2020': dem_file,
+            'US_240CBH': chm_file,
+            'US_ASP2020': aspect_file,
+            'US_SLPD2020': slope_file,
+        }
+        
+        # Merge layers into output file
+        with rasterio.open(merged_path, 'w', driver=flammap_file.driver,
+                           height=target_shape[0], width=target_shape[1],
+                           count=len(flammap_file.indexes),
+                           dtype=dem_file.dtypes[0],
+                           crs=target_crs, transform=target_transform) as merged_file:
+
+            # For each layer
+            for i, description in zip(flammap_file.indexes, flammap_file.descriptions):
+
+                # If this is a layer that we generated, use that
+                if description in desc_map.keys():
+                    file = desc_map[description]
+                    index = 1
+                
+                # Else, use the flammap data
+                else:
+                    file = flammap_file
+                    index = i
+
+                # Downsample flammap data
+                rasterio.warp.reproject(rasterio.band(file, index), rasterio.band(merged_file, i), resampling=rasterio.warp.Resampling.average)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -76,6 +150,8 @@ if __name__ == '__main__':
     verbosity = min(verbosity, len(log_level_options)-1)
     log.setLevel(log_level_options[verbosity])
 
+    tmp_folder_path = Path('data/tmp')
+
 
     # TODO: check dependencies
     # TODO: make threadpool for each input file
@@ -87,14 +163,15 @@ if __name__ == '__main__':
             pcd_path = file
             filename, crs = file.stem.rsplit('_', 1)
 
-            step = 8
-
+            step = 10
 
             output_directory = args.output_location / filename
             output_directory.mkdir(parents=True, exist_ok=True)
 
             las_path = (output_directory / filename).with_suffix('.las')
-
+            zip_in_path =           file.with_suffix('.zip')
+            # zip_tmp_path =          las_path.with_name(filename + '_flammap.tif')
+            zip_tmp_path =          tmp_folder_path / filename
 
             dem_path =              las_path.with_name(filename + '_dem.tif')
             slope_path =            las_path.with_name(filename + '_slope.tif')
@@ -103,6 +180,9 @@ if __name__ == '__main__':
             las_segmented_path =    las_path.with_name(filename + '_segmented.las')
             dbh_path =              las_path.with_name(filename + '_dbh.csv')
             trunk_density_path =    las_path.with_name(filename + '_trunk_density.tif')
+            flammap_path =          las_path.with_name(filename + '_flammap.tif')
+            merged_path =           las_path.with_name(filename + '_merged.tif')
+
 
             step = step-1
             if step < args.force_steps:
@@ -110,9 +190,9 @@ if __name__ == '__main__':
             if las_path.exists():
                 log.info(f'Skipping - Generate las file: already exists at {las_path}')
             else:
-                log.info(f'Generating filtered las file at {las_path}')
-                log.info('This will take some time...')
+                log.info(f'Generating filtered las file at {las_path}. This will take some time...')
                 filter_outliers(pcd_path, las_path, crs)
+
 
             step = step-1
             if step < args.force_steps:
@@ -182,24 +262,25 @@ if __name__ == '__main__':
             else:
                 log.info(f'Generating trunk density file at {trunk_density_path}')
                 generate_trunk_density_file(dbh_path, trunk_density_path)
-
-
-            # Get lat-long bounds with rasterio
-            print(utils.geotiff_utils.get_lat_long_bounds(dem_path))
-            quit()
-
-            # TODO: check that flammap data exists
-
-            # TODO: If flammap data does not exist, pull it from appropriate source
-
-            # TODO: change flammap data into UTM frame
-            # rasterio.warp.reproject or gdalwarp or gdal_translate
-
-
-            # TODO: Downsample flammap data
-            # https://gdal.org/en/latest/programs/gdal_translate.html
-            #                   v maybe bilinear?
-            # gdal_translate -r average -co COMPRESS=LZW -outsize 20% 20% raw_image.tif resampled_image.tif
             
-            # TODO: Merge layers
+            
+            step = step-1
+            if step < args.force_steps:
+                flammap_path.unlink(missing_ok=True)
+            if flammap_path.exists():
+                log.info(f'Skipping - Generate flammap file: already exists at {flammap_path}')
+            else:
+                log.info(f'Generating flammap file at {flammap_path}')
+                generate_flammap_data(zip_in_path, zip_tmp_path, dem_path, flammap_path)
 
+            
+            step = step-1
+            if step < args.force_steps:
+                merged_path.unlink(missing_ok=True)
+            if merged_path.exists():
+                log.info(f'Skipping - Generate merged file: already exists at {merged_path}')
+            else:
+                log.info(f'Generating merged file at {merged_path}')
+                generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path)
+
+            quit()
