@@ -1,0 +1,3 @@
+[submodule "depend/OpenSplat"]
+	path = depend/OpenSplat
+	url = git@github.com:pierotofy/OpenSplat.git

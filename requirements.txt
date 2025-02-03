@@ -9,3 +9,5 @@ laspy
 rasterio
 
 skimage
+
+docker
