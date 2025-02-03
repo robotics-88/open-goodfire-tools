@@ -128,8 +128,15 @@ def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_pa
                     file = flammap_file
                     index = i
 
+                # Force use nearest-neighbor sampling for fuel model layer. Its important that we only use the existing values and not interpolate, because we later do lookups based on those values
+                if description == 'US_240FBFM40':
+                    resampling_method = rasterio.warp.Resampling.nearest
+                else:
+                    resampling_method = rasterio.warp.Resampling.bilinear
+
+
                 # Downsample flammap data
-                rasterio.warp.reproject(rasterio.band(file, index), rasterio.band(merged_file, i), resampling=rasterio.warp.Resampling.average)
+                rasterio.warp.reproject(rasterio.band(file, index), rasterio.band(merged_file, i), resampling=resampling_method)
 
 
 if __name__ == '__main__':
