@@ -78,9 +78,13 @@ def generate_ply(images_path, sparse_path, ply_path):
     db_mount = docker.types.Mount('/data/output.splat', str(ply_path.absolute()), type='bind')
     
     print('running opensplat')
-    client.containers.run('open_splat:latest', '/code/build/opensplat /data -n 7500 -o /data/output.splat', auto_remove=True, privileged=True, runtime='nvidia', mounts=[images_mount, sparse_mount, db_mount])
-
-
+    container = client.containers.run('open_splat:latest', '/code/build/opensplat /data -n 7500 -o /data/output.splat', auto_remove=True, privileged=True, runtime='nvidia', mounts=[images_mount, sparse_mount, db_mount], detach=True)
+    # container = client.containers.create('open_splat:latest', 'echo hello1 && sleep 1 && echo hello2', privileged=True, runtime='nvidia', mounts=[images_mount, sparse_mount, db_mount], detach=True)
+    log_stream = container.attach(stream=True, logs=True)
+    container.start()
+    for log_line in log_stream:
+        print(str(log_line))
+    container.remove()
 
 
 if __name__ == '__main__':
