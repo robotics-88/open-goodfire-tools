@@ -8,6 +8,6 @@ laspy
 
 rasterio
 
-skimage
+scikit-image
 
 docker
