@@ -62,13 +62,7 @@ def generate_ply(images_path, sparse_path, ply_path):
     # Build the image
     if not image_exists:
         print('building image...')
-        client.images.build(path='depend/OpenSplat', tag='open_splat:latest', buildargs={
-            'UBUNTU_VERSION':'22.04',
-            'CUDA_VERSION':'12.1.1',
-            'TORCH_VERSION':'2.2.1',
-            'CMAKE_CUDA_ARCHITECTURES':'70;75;80',
-            'CMAKE_BUILD_TYPE':'Release'
-        })
+        client.images.build(path='depend/OpenSplat', tag='open_splat:latest')
     
     ply_path.touch(exist_ok=True)
 
@@ -78,7 +72,7 @@ def generate_ply(images_path, sparse_path, ply_path):
     db_mount = docker.types.Mount('/data/output.splat', str(ply_path.absolute()), type='bind')
     
     print('running opensplat')
-    container = client.containers.run('open_splat:latest', '/code/build/opensplat /data -n 7500 -o /data/output.splat', auto_remove=True, privileged=True, runtime='nvidia', mounts=[images_mount, sparse_mount, db_mount], detach=True)
+    container = client.containers.run('open_splat:latest', '/code/build/opensplat /data -n 7500 -o /data/output.splat', auto_remove=True, runtime='nvidia', mounts=[images_mount, sparse_mount, db_mount], detach=True)
     # container = client.containers.create('open_splat:latest', 'echo hello1 && sleep 1 && echo hello2', privileged=True, runtime='nvidia', mounts=[images_mount, sparse_mount, db_mount], detach=True)
     log_stream = container.attach(stream=True, logs=True)
     container.start()
