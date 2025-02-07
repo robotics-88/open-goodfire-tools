@@ -1,8 +1,8 @@
 # Drone Data Processing
 
-See more internal documentation [here](https://www.notion.so/robotics88/Data-Processing-Documentation-1212bdc47817801bb5f6ccf8cfeed58e?pvs=4)
+See more internal documentation [here](https://www.notion.so/robotics88/Data-Processing-Documentation-1212bdc47817801bb5f6ccf8cfeed58e?pvs=4).
 
-This repository may eventually merge with [post-flight](https://github.com/robotics-88/post-flight)
+This repository may eventually merge with [post-flight](https://github.com/robotics-88/post-flight).
 
 # Purpose
 
