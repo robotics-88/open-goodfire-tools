@@ -49,7 +49,7 @@ def generate_sparse(images_path, database_path, sparse_path):
     colmap_container.remove(force=True)
     
 
-def generate_ply(images_path, sparse_path, ply_path):
+def generate_ply(images_path, sparse_path, ply_path, num_splats):
     client = docker.from_env()
 
     # Check that our custom image exists
@@ -70,15 +70,17 @@ def generate_ply(images_path, sparse_path, ply_path):
     images_mount = docker.types.Mount('/data/images', str(images_path.absolute()), type='bind')
     sparse_mount = docker.types.Mount('/data/sparse', str(sparse_path.absolute()), type='bind')
     db_mount = docker.types.Mount('/data/output.splat', str(ply_path.absolute()), type='bind')
+    gpu_device = docker.types.DeviceRequest(count=-1, capabilities=[['gpu']])
+    
     
     print('running opensplat')
-    container = client.containers.run('open_splat:latest', '/code/build/opensplat /data -n 7500 -o /data/output.splat', auto_remove=True, runtime='nvidia', mounts=[images_mount, sparse_mount, db_mount], detach=True)
+    container = client.containers.run('open_splat:latest', f'/code/build/opensplat /data -n {num_splats} -o /data/output.splat', auto_remove=True, runtime='nvidia', device_requests=[gpu_device], mounts=[images_mount, sparse_mount, db_mount], detach=True)
     # container = client.containers.create('open_splat:latest', 'echo hello1 && sleep 1 && echo hello2', privileged=True, runtime='nvidia', mounts=[images_mount, sparse_mount, db_mount], detach=True)
     log_stream = container.attach(stream=True, logs=True)
     container.start()
     for log_line in log_stream:
         print(str(log_line))
-    container.remove()
+    # container.remove()
 
 
 if __name__ == '__main__':
@@ -89,10 +91,10 @@ if __name__ == '__main__':
     ply_path = Path('gsplat_data/output/gopro/splat.ply')
 
     if not images_path.exists():
-        generate_images(video_path, images_path, 5, "out%d.png")
+        generate_images(video_path, images_path, 60, "out%d.png")
     
     if not sparse_path.exists():
         generate_sparse(images_path, database_path, sparse_path)
 
     if not ply_path.exists():
-        generate_ply(images_path, sparse_path, ply_path)
+        generate_ply(images_path, sparse_path, ply_path, 15000)
