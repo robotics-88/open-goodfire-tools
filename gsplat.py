@@ -34,9 +34,10 @@ def generate_images(video_path, images_path, sample_rate, image_name_pattern):
     return subprocess.call(['ffmpeg', '-i', video_path, '-vf', f'fps={sample_rate}', images_path / image_name_pattern])
 
 
-def generate_sparse(images_path, database_path, sparse_path):
+def generate_sparse(images_path, database_path, sparse_path, opensfm_path):
     sparse_path.mkdir(parents=True, exist_ok=True)
     database_path.touch(exist_ok=True)
+    opensfm_path.mkdir(exist_ok=True)
 
     images_mount = docker.types.Mount('/data/images', str(images_path.absolute()), type='bind')
     sparse_mount = docker.types.Mount('/data/sparse', str(sparse_path.absolute()), type='bind')
@@ -44,21 +45,28 @@ def generate_sparse(images_path, database_path, sparse_path):
 
     # TODO: pull first, make logs visible    
     
-    print('running feature extraction...')
-    feature_extraction_command = 'colmap feature_extractor --database_path /data/database.db --image_path /data/images'
-    run_in_docker(feature_extraction_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
+    # print('running feature extraction...')
+    # feature_extraction_command = 'colmap feature_extractor --database_path /data/database.db --image_path /data/images'
+    # run_in_docker(feature_extraction_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
 
-    print('running matcher...')
-    matcher_command = 'colmap exhaustive_matcher --database_path /data/database.db'
-    run_in_docker(matcher_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
+    # print('running matcher...')
+    # matcher_command = 'colmap exhaustive_matcher --database_path /data/database.db'
+    # run_in_docker(matcher_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
 
-    print('running mapper...')
-    mapper_command = 'colmap mapper --database_path /data/database.db --image_path /data/images --output_path /data/sparse'
-    run_in_docker(mapper_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
+    # print('running mapper...')
+    # mapper_command = 'colmap mapper --database_path /data/database.db --image_path /data/images --output_path /data/sparse'
+    # run_in_docker(mapper_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
+
+    print('running odm...')
+
+    odm_mount = docker.types.Mount('/data/opensfm', str(opensfm_path.absolute()), type='bind')
+    odm_command = '--project-path / data --skip-orthophoto --skip-report --matcher-neighbors 7 --matcher-order 7'
+    run_in_docker(odm_command, 'opendronemap/odm:gpu', [images_mount, odm_mount])
+
 
     
 
-def generate_ply(images_path, sparse_path, ply_path, num_splats):
+def generate_ply(images_path, sparse_path, ply_path, opensfm_path, num_splats):
     client = docker.from_env()
 
     # Check that our custom image exists
@@ -79,17 +87,19 @@ def generate_ply(images_path, sparse_path, ply_path, num_splats):
     # Run the image
     images_mount = docker.types.Mount('/data/images', str(images_path.absolute()), type='bind')
     sparse_mount = docker.types.Mount('/data/sparse', str(sparse_path.absolute()), type='bind')
-    db_mount = docker.types.Mount('/data/output.splat', str(ply_path.absolute()), type='bind')
-    
+    splat_mount = docker.types.Mount('/data/output.splat', str(ply_path.absolute()), type='bind')
+    odm_mount = docker.types.Mount('/data/opensfm', str(opensfm_path.absolute()), type='bind')
+
     print('running opensplat')
     open_splat_command = f'/code/build/opensplat /data -n {num_splats} -o /data/output.splat'
-    run_in_docker(open_splat_command, 'open_splat:latest', mounts=[images_mount, sparse_mount, db_mount])
+    run_in_docker(open_splat_command, 'open_splat:latest', mounts=[images_mount, odm_mount, splat_mount])
 
 
 if __name__ == '__main__':
     video_path = Path('gsplat_data/input/gopro/trimmed.mp4')
-    images_path = Path('gsplat_data/output/gopro/input')
+    images_path = Path('gsplat_data/output/gopro/images')
     sparse_path = Path('gsplat_data/output/gopro/sparse')
+    opensfm_path = Path('gsplat_data/output/gopro/opensfm')
     database_path = Path('gsplat_data/output/gopro/database.db')
     ply_path = Path('gsplat_data/output/gopro/splat.ply')
 
@@ -100,13 +110,13 @@ if __name__ == '__main__':
     generate_images_time = time.time() - tic
 
     tic = time.time()
-    if not sparse_path.exists():
-        generate_sparse(images_path, database_path, sparse_path)
+    # if not sparse_path.exists():
+    generate_sparse(images_path, database_path, sparse_path, opensfm_path)
     generate_sparse_time = time.time() - tic
 
     tic = time.time()
     if not ply_path.exists():
-        generate_ply(images_path, sparse_path, ply_path, 100_00)
+        generate_ply(images_path, sparse_path, ply_path, opensfm_path, 100_00)
     generate_ply_time = time.time() - tic
 
     print(f'generate_images_time: {generate_images_time:.2f}')
