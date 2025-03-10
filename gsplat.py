@@ -8,14 +8,33 @@ from pathlib import Path
 
 import time
 
+
+
+
+
+def run_in_docker(command, image, mounts):
+    # TODO: consider capping nvidia clock speeds, lest the computer crash
+    # sudo nvidia-smi -lgc 300,1500
+
+    client = docker.from_env()
+    gpu_device = docker.types.DeviceRequest(count=-1, capabilities=[['gpu']])
+
+    container = client.containers.run(image, command, auto_remove=True, runtime='nvidia', detach=True, device_requests=[gpu_device], mounts=mounts)
+    log_stream = container.attach(stream=True, logs=True)
+    container.start()
+
+    for log_line in log_stream:
+        print(str(log_line))
+
+
+
+
 def generate_images(video_path, images_path, sample_rate, image_name_pattern):
     images_path.mkdir(parents=True, exist_ok=True)
     return subprocess.call(['ffmpeg', '-i', video_path, '-vf', f'fps={sample_rate}', images_path / image_name_pattern])
 
-def generate_sparse(images_path, database_path, sparse_path):
-    # TODO: bind mount the database, if we need it
-    client = docker.from_env()
 
+def generate_sparse(images_path, database_path, sparse_path):
     sparse_path.mkdir(parents=True, exist_ok=True)
     database_path.touch(exist_ok=True)
 
@@ -23,53 +42,20 @@ def generate_sparse(images_path, database_path, sparse_path):
     sparse_mount = docker.types.Mount('/data/sparse', str(sparse_path.absolute()), type='bind')
     db_mount = docker.types.Mount('/data/database.db', str(database_path.absolute()), type='bind')
 
+    # TODO: pull first, make logs visible    
     
-
-    feature_extraction_command = 'colmap feature_extractor --database_path /data/database.db --image_path /data/images'
-    matcher_command = 'colmap exhaustive_matcher --database_path /data/database.db'
-    mapper_command = 'colmap mapper --database_path /data/database.db --image_path /data/images --output_path /data/sparse'
-
-    # TODO: pull first, make logs visible
-    gpu_device = docker.types.DeviceRequest(count=-1, capabilities=[['gpu']])
-    device_requests=[gpu_device]
-
-    # TODO: consider capping nvidia clock speeds, lest the computer crash
-    # sudo nvidia-smi -lgc 300,1500
-
-    # colmap_container = client.containers.run('colmap/colmap:latest', 'sleep infinity', auto_remove=False, detach=True, mounts=[images_mount, sparse_mount, db_mount])
     print('running feature extraction...')
-    colmap_container = client.containers.run('colmap/colmap:latest', feature_extraction_command, auto_remove=True, runtime='nvidia', detach=True, device_requests=[gpu_device], mounts=[images_mount, sparse_mount, db_mount])
-
-    log_stream = colmap_container.attach(stream=True, logs=True)
-    colmap_container.start()
-    for log_line in log_stream:
-        print(str(log_line))
+    feature_extraction_command = 'colmap feature_extractor --database_path /data/database.db --image_path /data/images'
+    run_in_docker(feature_extraction_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
 
     print('running matcher...')
-    colmap_container = client.containers.run('colmap/colmap:latest', matcher_command, auto_remove=True, runtime='nvidia', detach=True, device_requests=[gpu_device], mounts=[images_mount, sparse_mount, db_mount])
-
-    log_stream = colmap_container.attach(stream=True, logs=True)
-    colmap_container.start()
-    for log_line in log_stream:
-        print(str(log_line))
+    matcher_command = 'colmap exhaustive_matcher --database_path /data/database.db'
+    run_in_docker(matcher_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
 
     print('running mapper...')
-    colmap_container = client.containers.run('colmap/colmap:latest', mapper_command, auto_remove=True, runtime='nvidia', detach=True, device_requests=[gpu_device], mounts=[images_mount, sparse_mount, db_mount])
+    mapper_command = 'colmap mapper --database_path /data/database.db --image_path /data/images --output_path /data/sparse'
+    run_in_docker(mapper_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
 
-    log_stream = colmap_container.attach(stream=True, logs=True)
-    colmap_container.start()
-    for log_line in log_stream:
-        print(str(log_line))
-
-    # print('running feature extraction...')
-    # colmap_container.exec_run(feature_extraction_command)
-    # print('running matcher...')
-    # colmap_container.exec_run(matcher_command)
-    # print('running mapper...')
-    # colmap_container.exec_run(mapper_command)
-
-    # colmap_container.kill()
-    # colmap_container.remove(force=True)
     
 
 def generate_ply(images_path, sparse_path, ply_path, num_splats):
@@ -85,6 +71,7 @@ def generate_ply(images_path, sparse_path, ply_path, num_splats):
     # Build the image
     if not image_exists:
         print('building image...')
+        # TODO: Logs
         client.images.build(path='depend/OpenSplat', tag='open_splat:latest')
     
     ply_path.touch(exist_ok=True)
@@ -93,17 +80,10 @@ def generate_ply(images_path, sparse_path, ply_path, num_splats):
     images_mount = docker.types.Mount('/data/images', str(images_path.absolute()), type='bind')
     sparse_mount = docker.types.Mount('/data/sparse', str(sparse_path.absolute()), type='bind')
     db_mount = docker.types.Mount('/data/output.splat', str(ply_path.absolute()), type='bind')
-    gpu_device = docker.types.DeviceRequest(count=-1, capabilities=[['gpu']])
-    
     
     print('running opensplat')
-    container = client.containers.run('open_splat:latest', f'/code/build/opensplat /data -n {num_splats} -o /data/output.splat', auto_remove=True, runtime='nvidia', device_requests=[gpu_device], mounts=[images_mount, sparse_mount, db_mount], detach=True)
-    # container = client.containers.create('open_splat:latest', 'echo hello1 && sleep 1 && echo hello2', privileged=True, runtime='nvidia', mounts=[images_mount, sparse_mount, db_mount], detach=True)
-    log_stream = container.attach(stream=True, logs=True)
-    container.start()
-    for log_line in log_stream:
-        print(str(log_line))
-    # container.remove()
+    open_splat_command = f'/code/build/opensplat /data -n {num_splats} -o /data/output.splat'
+    run_in_docker(open_splat_command, 'open_splat:latest', mounts=[images_mount, sparse_mount, db_mount])
 
 
 if __name__ == '__main__':
