@@ -1,14 +1,10 @@
 import argparse
 import subprocess
+from pathlib import Path
+import time
 
 import docker
 import docker.types
-
-from pathlib import Path
-
-import time
-
-
 
 
 
@@ -25,8 +21,6 @@ def run_in_docker(command, image, mounts):
 
     for log_line in log_stream:
         print(log_line.decode(), end='')
-
-
 
 
 def generate_images(video_path, images_path, sample_rate, image_name_pattern):
@@ -52,9 +46,14 @@ def generate_sparse(images_path, database_path, sparse_path, opensfm_path):
     run_in_docker(odm_command, 'opendronemap/odm', [images_mount, odm_mount])
 
 
-    
+    # openMVG_main_SfMInit_ImageListing -d /home/qbowers/source_control/drone-data-processing/depend/openMVG/src/openMVG/exif/sensor_width_database/sensor_width_camera_database.txt -i images/ -o matches -x 2400
+    # openMVG_main_ComputeFeatures -i matches/sfm_data.json -o matches
+    # openMVG_main_ComputeMatches -i matches/sfm_data.json -o matches
+    # openMVG_main_SfM -i matches/sfm_data.json -m matches -o reconstruction -s INCREMENTAL
 
-def generate_ply(images_path, sparse_path, ply_path, opensfm_path, num_splats):
+
+
+def generate_ply(images_path, sparse_path, ply_path, opensfm_path, openmvg_path, num_splats):
     client = docker.from_env()
 
     # Check that our custom image exists
@@ -75,6 +74,7 @@ def generate_ply(images_path, sparse_path, ply_path, opensfm_path, num_splats):
     # Run the image
     images_mount = docker.types.Mount('/data/images', str(images_path.absolute()), type='bind')
     sparse_mount = docker.types.Mount('/data/sparse', str(sparse_path.absolute()), type='bind')
+    # mvg_mount = docker.types.Mount('/data/reconstruction', str(openmvg_path.absolute()), type='bind')
     splat_mount = docker.types.Mount('/data/output.splat', str(ply_path.absolute()), type='bind')
     odm_mount = docker.types.Mount('/data/opensfm', str(opensfm_path.absolute()), type='bind')
 
@@ -82,35 +82,25 @@ def generate_ply(images_path, sparse_path, ply_path, opensfm_path, num_splats):
     open_splat_command = f'/code/build/opensplat /data -n {num_splats} -o /data/output.splat'
     run_in_docker(open_splat_command, 'open_splat:latest', mounts=[images_mount, odm_mount, splat_mount])
 
+    # open_splat_command = f'/code/build/opensplat /data/reconstruction/matches -n {num_splats} -o /data/output.splat'
+    # run_in_docker(open_splat_command, 'open_splat:latest', mounts=[images_mount, splat_mount, mvg_mount])
+
 
 if __name__ == '__main__':
-    # name = "museumfrontwalkway"
-    # name = "museumsparsetrees"
-    name = "roadpowerline"
+
+    name = "birds_new"
 
     video_path = Path(f'gsplat_data/input/{name}.mp4')
     images_path = Path(f'gsplat_data/output/{name}/images')
     sparse_path = Path(f'gsplat_data/output/{name}/sparse')
+    openmvg_path = Path(f'gsplat_data/output/{name}/reconstruction')
     opensfm_path = Path(f'gsplat_data/output/{name}/opensfm')
     database_path = Path(f'gsplat_data/output/{name}/database.db')
     ply_path = Path(f'gsplat_data/output/{name}/splat.ply')
-    # video_path = Path('gsplat_data/input/house/trimmed.mp4')
-    # images_path = Path('gsplat_data/output/house/images')
-    # sparse_path = Path('gsplat_data/output/house/sparse')
-    # opensfm_path = Path('gsplat_data/output/house/opensfm')
-    # database_path = Path('gsplat_data/output/house/database.db')
-    # ply_path = Path('gsplat_data/output/house/splat.ply')
-    # video_path = Path('gsplat_data/input/gopro/trimmed.mp4')
-    # images_path = Path('gsplat_data/output/gopro/images')
-    # sparse_path = Path('gsplat_data/output/gopro/sparse')
-    # opensfm_path = Path('gsplat_data/output/gopro/opensfm')
-    # database_path = Path('gsplat_data/output/gopro/database.db')
-    # ply_path = Path('gsplat_data/output/gopro/splat.ply')
 
     tic = time.time()
     if not images_path.exists():
         generate_images(video_path, images_path, 5, "out%d.png")
-    
     generate_images_time = time.time() - tic
 
     tic = time.time()
@@ -126,5 +116,5 @@ if __name__ == '__main__':
     print(f'generate_images_time: {generate_images_time:.2f}')
     print(f'generate_sparse_time: {generate_sparse_time:.2f}')
     print(f'generate_ply_time:    {generate_ply_time:.2f}')
-    print(f'ply is at:            {ply_path}')
     print(f'total time elapsed:   {(generate_images_time + generate_sparse_time + generate_ply_time):.2f}')
+    print(f'ply is at:            {ply_path}')
