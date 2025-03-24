@@ -14,7 +14,6 @@ import shutil
 import rasterio
 
 
-
 log_level_options = [log.WARNING, log.INFO, log.DEBUG]
 
 
@@ -26,9 +25,9 @@ def filter_outliers(pcd_path, las_path, crs):
                             '--writers.las.filename', las_path,\
                             '--writers.las.a_srs', f'EPSG:{crs}'])
 
-# def generate_las(pcd_path, las_path):
-#     # Use pdal command to generate las. call blocks until command finishes.
-#     return subprocess.call(['pdal', 'translate', pcd_path, las_path])
+def generate_las(pcd_path, las_path):
+    # Use pdal command to generate las. call blocks until command finishes.
+    return subprocess.call(['pdal', 'translate', pcd_path, las_path])
 
 def split_inputs():
     # TODO: accept a pcd or las and split it into multiple tiled subcomponents
@@ -79,14 +78,15 @@ def generate_flammap_data(zip_in_path, zip_tmp_path, dem_path, flammap_path):
     # Move Flammap tif data to correct location
     shutil.move( str( tif_path ), str(flammap_path) )
 
-def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path):
+def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path, fuels_path):
     
     # Open input files
     with rasterio.open(flammap_path) as flammap_file, \
          rasterio.open(dem_path) as dem_file, \
          rasterio.open(chm_path) as chm_file, \
          rasterio.open(aspect_path) as aspect_file, \
-         rasterio.open(slope_path) as slope_file:
+         rasterio.open(slope_path) as slope_file, \
+         rasterio.open(fuels_path) as fuels_file:
 
         # Defining the goal:
         # I want to end up with one geotiff file
@@ -106,6 +106,9 @@ def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_pa
             'US_240CBH': chm_file,
             'US_ASP2020': aspect_file,
             'US_SLPD2020': slope_file,
+
+            # hack
+            'US_240FBFM40': fuels_file
         }
         
         # Merge layers into output file
@@ -131,12 +134,44 @@ def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_pa
                 # Force use nearest-neighbor sampling for fuel model layer. Its important that we only use the existing values and not interpolate, because we later do lookups based on those values
                 if description == 'US_240FBFM40':
                     resampling_method = rasterio.warp.Resampling.nearest
+
+                    import numpy as np
+                    import matplotlib.pyplot as plt
+
+                    merged = np.zeros(target_shape, np.uint8)
+                    warped_fuels = np.zeros(target_shape, np.uint8)
+                    
+                    # Warp flammap data
+                    rasterio.warp.reproject(rasterio.band(flammap_file, i), merged, resampling=resampling_method, dst_transform=target_transform, dst_crs=target_crs)
+                    # Warp our data
+                    rasterio.warp.reproject(rasterio.band(fuels_file, 1), warped_fuels, resampling=resampling_method, dst_transform=target_transform, dst_crs=target_crs)
+
+                    # Selective overwrite with our data
+                    # plt.imshow(merged)
+                    # plt.show()
+
+                    merged[merged == 255] = 0
+                    # plt.imshow(merged)
+                    # plt.show()
+                    # plt.imshow(warped_fuels)
+                    # print(warped_fuels)
+                    # plt.show()
+                    # print(np.any(merged == 255))
+                    # print(np.any(warped_fuels == 255))
+
+                    np.putmask(merged, np.logical_and(warped_fuels != 0, warped_fuels != 90), warped_fuels)
+                    # plt.imshow(merged)
+                    # plt.show()
+                    # print(np.any(merged == 255))
+
+                    # write output
+                    merged_file.write(merged, i)
                 else:
                     resampling_method = rasterio.warp.Resampling.bilinear
+                    # Downsample flammap data
+                    rasterio.warp.reproject(rasterio.band(file, index), rasterio.band(merged_file, i), resampling=resampling_method)
 
 
-                # Downsample flammap data
-                rasterio.warp.reproject(rasterio.band(file, index), rasterio.band(merged_file, i), resampling=resampling_method)
 
 
 if __name__ == '__main__':
@@ -164,7 +199,10 @@ if __name__ == '__main__':
     # TODO: make threadpool for each input file
 
     for file in args.input_location.glob('**/*.pcd'):
+        if 'bird' not in str(file): continue
+
         log.info(f'Processing input file {file}')
+
         with log.indent():
 
             pcd_path = file
@@ -177,6 +215,7 @@ if __name__ == '__main__':
 
             las_path = (output_directory / filename).with_suffix('.las')
             zip_in_path =           file.with_suffix('.zip')
+            fuels_path =              file.with_name(filename + '_fuels.tif')
             # zip_tmp_path =          las_path.with_name(filename + '_flammap.tif')
             zip_tmp_path =          tmp_folder_path / filename
 
@@ -198,6 +237,7 @@ if __name__ == '__main__':
                 log.info(f'Skipping - Generate las file: already exists at {las_path}')
             else:
                 log.info(f'Generating filtered las file at {las_path}. This will take some time...')
+                # generate_las(pcd_path, las_path)
                 filter_outliers(pcd_path, las_path, crs)
 
 
@@ -288,6 +328,5 @@ if __name__ == '__main__':
                 log.info(f'Skipping - Generate merged file: already exists at {merged_path}')
             else:
                 log.info(f'Generating merged file at {merged_path}')
-                generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path)
+                generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path, fuels_path)
 
-            quit()
