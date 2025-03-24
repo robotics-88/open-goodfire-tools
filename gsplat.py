@@ -28,18 +28,36 @@ def generate_images(video_path, images_path, sample_rate, image_name_pattern):
     return subprocess.call(['ffmpeg', '-i', video_path, '-vf', f'fps={sample_rate}', images_path / image_name_pattern])
 
 
-def generate_sparse(images_path, database_path, sparse_path, opensfm_path):
+def generate_sfm_colmap(images_path, database_path, sparse_path):
     sparse_path.mkdir(parents=True, exist_ok=True)
     database_path.touch(exist_ok=True)
-    opensfm_path.mkdir(exist_ok=True)
 
     images_mount = docker.types.Mount('/data/images', str(images_path.absolute()), type='bind')
     sparse_mount = docker.types.Mount('/data/sparse', str(sparse_path.absolute()), type='bind')
     db_mount = docker.types.Mount('/data/database.db', str(database_path.absolute()), type='bind')
+
+    # TODO: pull first, make logs visible    
+    
+    print('running feature extraction...')
+    feature_extraction_command = 'colmap feature_extractor --database_path /data/database.db --image_path /data/images'
+    run_in_docker(feature_extraction_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
+
+    print('running matcher...')
+    matcher_command = 'colmap exhaustive_matcher --database_path /data/database.db'
+    run_in_docker(matcher_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
+
+    print('running mapper...')
+    mapper_command = 'colmap mapper --database_path /data/database.db --image_path /data/images --output_path /data/sparse'
+    run_in_docker(mapper_command, 'colmap/colmap:latest', [images_mount, sparse_mount, db_mount])
+
+
+def generate_sfm_odm(images_path, opensfm_path):
+    opensfm_path.mkdir(exist_ok=True)
+
+    images_mount = docker.types.Mount('/data/images', str(images_path.absolute()), type='bind')
     odm_mount = docker.types.Mount('/data/opensfm', str(opensfm_path.absolute()), type='bind')
 
     # TODO: pull first, make logs visible    
-
     print('running odm...')
 
     odm_command = '--project-path / data --skip-orthophoto --skip-report --matcher-neighbors 7 --matcher-order 7'
@@ -94,7 +112,7 @@ if __name__ == '__main__':
     images_path = Path(f'gsplat_data/output/{name}/images')
     sparse_path = Path(f'gsplat_data/output/{name}/sparse')
     openmvg_path = Path(f'gsplat_data/output/{name}/reconstruction')
-    opensfm_path = Path(f'gsplat_data/output/{name}/opensfm')
+    odm_path = Path(f'gsplat_data/output/{name}/odm')
     database_path = Path(f'gsplat_data/output/{name}/database.db')
     ply_path = Path(f'gsplat_data/output/{name}/splat.ply')
 
@@ -105,12 +123,12 @@ if __name__ == '__main__':
 
     tic = time.time()
     if not sparse_path.exists():
-        generate_sparse(images_path, database_path, sparse_path, opensfm_path)
+        generate_sfm_odm(images_path, odm_path)
     generate_sparse_time = time.time() - tic
 
     tic = time.time()
     if not ply_path.exists():
-        generate_ply(images_path, sparse_path, ply_path, opensfm_path, 100_000)
+        generate_ply(images_path, sparse_path, ply_path, odm_path, 100_000)
     generate_ply_time = time.time() - tic
 
     print(f'generate_images_time: {generate_images_time:.2f}')
