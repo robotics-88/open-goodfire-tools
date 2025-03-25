@@ -30,9 +30,10 @@ curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dear
 # do not use -y; give the user a chance to review dependencies before they install
 sudo apt install $packages_to_install
 
-# Add nvidia as a docker runtime
 # Test if nvidia runtime works
 if ! docker run --rm --runtime=nvidia --gpus all nvidia/cuda:12.4.0-devel-ubuntu22.04 nvidia-smi; then
+
+    # Add nvidia as a docker runtime
     sudo usermod -aG docker $USER
     sudo nvidia-ctk runtime configure --runtime=docker
     sudo systemctl restart docker

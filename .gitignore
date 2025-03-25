@@ -1,5 +1,8 @@
+.vscode
+
+env
+.env
+
 data
 gsplat_data
-.vscode
-env
 __pycache__
