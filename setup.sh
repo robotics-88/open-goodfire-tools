@@ -24,7 +24,7 @@ packages_to_install="$packages_to_install python3-venv"
 packages_to_install="$packages_to_install nvidia-container-toolkit"
 
 # OpenMVG deps
-packages_to_install="$packages_to_install libpng-dev libjpeg-dev libtiff-dev libxxf86vm1 libxxf86vm-dev libxi-dev libxrandr-dev"
+# packages_to_install="$packages_to_install libpng-dev libjpeg-dev libtiff-dev libxxf86vm1 libxxf86vm-dev libxi-dev libxrandr-dev"
 
 # Docker dep
 if ! command -v docker &> /dev/null; then
