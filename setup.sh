@@ -51,7 +51,7 @@ git submodule update --init --recursive
 root_dir=$(pwd)
 
 # build openmvg
-mkdir $root_dir/depend/openMVG/build
+mkdir -p $root_dir/depend/openMVG/build
 cd $root_dir/depend/openMVG/build
 
 cmake -DCMAKE_BUILD_TYPE=RELEASE ../src/
