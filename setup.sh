@@ -3,6 +3,17 @@
 # Abort script on error, errors include pre-pipe commands
 set -eo pipefail
 
+# Check for nvidia graphics drivers
+if ! command -v nvidia-smi &> /dev/null; then
+    echo "---------------------------------------------------------------------------------------------------------------"
+    echo "---  Please install nvidia graphics drivers and try again                                                   ---"
+    echo "---    On Ubuntu, do this via the \"Additional Drivers\" app                                                  ---"
+    echo "---    More info: https://documentation.ubuntu.com/server/how-to/graphics/install-nvidia-drivers/index.html ---"
+    echo "---------------------------------------------------------------------------------------------------------------"
+        
+    exit
+fi
+
 
 packages_to_install=""
 
