@@ -42,18 +42,17 @@ fi
 
 # create venv, install python deps
 python3 -m venv .env
-./env/bin/activate
+source .env/bin/activate
 pip install -r requirements.txt
 
 
 # pull submodules
 git submodule update --init --recursive
-root_dir=$pwd
-
+root_dir=$(pwd)
 
 # build openmvg
-mkdir $root_dir/depend/OpenSplat/build
-cd $root_dir/depend/OpenSplat/build
+mkdir $root_dir/depend/openMVG/build
+cd $root_dir/depend/openMVG/build
 
 cmake -DCMAKE_BUILD_TYPE=RELEASE ../src/
 cmake --build .
