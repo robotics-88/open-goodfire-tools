@@ -107,7 +107,6 @@ def generate_sfm_odm(images_path, opensfm_path):
     # run_in_docker(open_splat_command, 'open_splat:latest', mounts=[images_mount, splat_mount, mvg_mount])
 
 
-
 def generate_ply(mounts, num_splats):
     client = docker.from_env()
 
@@ -197,9 +196,6 @@ if __name__ == '__main__':
             log.info(f'Skipping - SFM: already exists at {odm_path}')
         else:
             log.info(f'Running {args.sfm} at {odm_path}')
-            generate_sfm_odm(images_path, odm_path)
-
-        if not sparse_path.exists():
             generate_sfm_odm(images_path, odm_path)
     generate_sparse_time = time.time() - tic
 
