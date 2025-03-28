@@ -116,7 +116,7 @@ def generate_sfm_mvg(images_path, openmvg_path, geo_method='non-rigid', geo_matc
         # openMVG_main_SfMInit_ImageListing -d {camera_database_path} -i {images_path} -o matches -x 2400
         image_list_command = [openmvg_binary_path / 'openMVG_main_SfMInit_ImageListing', '-d', camera_database_path, '-i', images_path, '-o', openmvg_path, '-f', '2400']
         if geo_method == 'non-rigid':
-            image_list_command.extend(['-P, --gps_to_xyz_method', '1'])
+            image_list_command.extend(['-P', '--gps_to_xyz_method', '1'])
         subprocess.call(image_list_command)
         
         log.info('Compute Features...')
