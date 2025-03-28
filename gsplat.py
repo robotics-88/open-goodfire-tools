@@ -99,13 +99,69 @@ def generate_sfm_odm(images_path, opensfm_path):
         run_in_docker(odm_command, 'opendronemap/odm', [images_mount, odm_mount])
 
 
-    # openMVG_main_SfMInit_ImageListing -d /home/qbowers/source_control/drone-data-processing/depend/openMVG/src/openMVG/exif/sensor_width_database/sensor_width_camera_database.txt -i images/ -o matches -x 2400
-    # openMVG_main_ComputeFeatures -i matches/sfm_data.json -o matches
-    # openMVG_main_ComputeMatches -i matches/sfm_data.json -o matches
-    # openMVG_main_SfM -i matches/sfm_data.json -m matches -o reconstruction -s INCREMENTAL
-    # open_splat_command = f'/code/build/opensplat /data/reconstruction/matches -n {num_splats} -o /data/output.splat'
-    # run_in_docker(open_splat_command, 'open_splat:latest', mounts=[images_mount, splat_mount, mvg_mount])
+def generate_sfm_mvg(images_path, openmvg_path, geo_method='non-rigid', geo_matching=False, matching_neighbors=5):
+    camera_database_path = Path('depend/openMVG/src/openMVG/exif/sensor_width_database/sensor_width_camera_database.txt')
+    openmvg_binary_path = Path('depend/openMVG/build/Linux-x86_64-RELEASE')
+    matches_path = openmvg_path / 'matches'
+    reconstruction_path = openmvg_path / 'incremental'
 
+    matches_path.mkdir(parents=True, exist_ok=True)
+    reconstruction_path.mkdir(parents=True, exist_ok=True)
+
+    json_path = openmvg_path / 'sfm_data.json'
+    parilist_path = matches_path / 'pair_list.txt'
+    
+    with log.indent():
+        log.info('List images...')
+        # openMVG_main_SfMInit_ImageListing -d {camera_database_path} -i {images_path} -o matches -x 2400
+        image_list_command = [openmvg_binary_path / 'openMVG_main_SfMInit_ImageListing', '-d', camera_database_path, '-i', images_path, '-o', openmvg_path, '-f', '2400']
+        if geo_method == 'non-rigid':
+            image_list_command.extend(['-P, --gps_to_xyz_method', '1'])
+        subprocess.call(image_list_command)
+        
+        log.info('Compute Features...')
+        # openMVG_main_ComputeFeatures -i matches/sfm_data.json -o matches
+        subprocess.call([openmvg_binary_path / 'openMVG_main_ComputeFeatures', '-i', json_path, '-o', matches_path ])
+        
+        # openMVG_main_ListMatchingPairs -G -n 5 -i Dataset/matching/sfm_data.bin -o Dataset/matching/pair_list.txt
+        log.info(f'List Pairs from {'GPS Exif' if geo_matching else 'Video Adjacency'} Data...')
+        pair_list_command = [openmvg_binary_path / 'openMVG_main_ListMatchingPairs', '-i', json_path, '-o', parilist_path]
+        if geo_method == 'non-rigid':
+            pair_list_command.extend(['-G', '-n', matching_neighbors])            
+        else:
+            pair_list_command.extend(['-V', '-n', matching_neighbors])
+        subprocess.call(pair_list_command)
+        
+
+        log.info('Compute Matches...')
+        # openMVG_main_ComputeMatches -i matches/sfm_data.json -o matches
+        subprocess.call([openmvg_binary_path / 'openMVG_main_ComputeMatches', '-i', json_path, '-o', matches_path / 'matches.putative.bin'])
+
+        log.info('Filter Matches...')
+        subprocess.call([openmvg_binary_path / 'openMVG_main_GeometricFilter', '-i', json_path, '-m', matches_path / 'matches.putative.bin' , '-g' , 'f' , '-o' , matches_path / 'matches.f.bin' ] )
+
+
+        log.info('Run SFM...')
+        # openMVG_main_SfM -i matches/sfm_data.json -m matches -o reconstruction -s INCREMENTAL
+        sfm_command = [openmvg_binary_path / 'openMVG_main_SfM', '-i', json_path, '-m', matches_path, '-o', reconstruction_path, '-s', 'INCREMENTAL']
+        if geo_method == 'non-rigid':
+            sfm_command.extend(['-P'])
+        subprocess.call(sfm_command)
+
+
+        if geo_method == 'rigid':
+
+            log.info('Do GPS Transformation...')
+            # openMVG_main_geodesy_registration_to_gps_position -i Dataset/out_Reconstruction/sfm_data.bin -o Dataset/out_Reconstruction/sfm_data_adjusted.bin
+            subprocess.call([openmvg_binary_path / 'openMVG_main_geodesy_registration_to_gps_position', '-i', json_path, '-o', openmvg_path / 'sfm_data_adjusted.json'])
+            json_path = openmvg_path / 'sfm_data_adjusted.json'
+
+
+        log.info('Colorize...')
+        # openMVG_main_ComputeSfM_DataColor -i reconstruction/incremental/sfm_data.bin -o reconstruction/colorized.ply
+        subprocess.call([openmvg_binary_path / 'openMVG_main_ComputeSfM_DataColor', '-i', json_path, '-o', reconstruction_path / 'colorized.ply'])
+
+    
 
 def generate_ply(mounts, num_splats):
     client = docker.from_env()
@@ -136,7 +192,8 @@ def generate_ply(mounts, num_splats):
 if __name__ == '__main__':
     sfm_options = {
         'colmap': generate_sfm_colmap,
-        'odm': generate_sfm_odm
+        'odm': generate_sfm_odm,
+        'mvg': generate_sfm_mvg
     }
 
 
@@ -165,6 +222,7 @@ if __name__ == '__main__':
     database_path =     output_path / 'database.db'
     
     odm_path =          output_path / 'odm'
+    mvg_path =          output_path / 'mvg'
     
     openmvg_path =      output_path / 'reconstruction'
     
@@ -197,6 +255,13 @@ if __name__ == '__main__':
         else:
             log.info(f'Running {args.sfm} at {odm_path}')
             generate_sfm_odm(images_path, odm_path)
+    
+    elif args.sfm == 'mvg':
+        # if mvg_path.exists():
+        #     log.info(f'Skipping - SFM: already exists at {mvg_path}')
+        # else:
+        log.info(f'Running {args.sfm} at {mvg_path}')
+        generate_sfm_mvg(images_path, mvg_path)
     generate_sparse_time = time.time() - tic
 
 
@@ -226,8 +291,8 @@ if __name__ == '__main__':
 
 
     # REPORTING
-    print(f'generate_images_time: {generate_images_time:.2f}')
-    print(f'generate_sparse_time: {generate_sparse_time:.2f}')
-    print(f'generate_ply_time:    {generate_ply_time:.2f}')
-    print(f'total time elapsed:   {(generate_images_time + generate_sparse_time + generate_ply_time):.2f}')
-    print(f'ply is at:            {ply_path}')
+    log.info(f'generate_images_time: {generate_images_time:.2f}')
+    log.info(f'generate_sparse_time: {generate_sparse_time:.2f}')
+    log.info(f'generate_ply_time:    {generate_ply_time:.2f}')
+    log.info(f'total time elapsed:   {(generate_images_time + generate_sparse_time + generate_ply_time):.2f}')
+    log.info(f'ply is at:            {ply_path}')
