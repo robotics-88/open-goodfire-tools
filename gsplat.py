@@ -127,9 +127,9 @@ def generate_sfm_mvg(images_path, openmvg_path, geo_method='non-rigid', geo_matc
         log.info(f'List Pairs from {"GPS Exif" if geo_matching else "Video Adjacency"} Data...')
         pair_list_command = [openmvg_binary_path / 'openMVG_main_ListMatchingPairs', '-i', json_path, '-o', parilist_path]
         if geo_method == 'non-rigid':
-            pair_list_command.extend(['-G', '-n', matching_neighbors])            
+            pair_list_command.extend(['-G', '-n', str(matching_neighbors)])            
         else:
-            pair_list_command.extend(['-V', '-n', matching_neighbors])
+            pair_list_command.extend(['-V', '-n', str(matching_neighbors)])
         subprocess.call(pair_list_command)
         
 
