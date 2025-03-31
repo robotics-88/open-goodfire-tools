@@ -126,7 +126,7 @@ def generate_sfm_mvg(images_path, openmvg_path, geo_method='non-rigid', geo_matc
         # openMVG_main_ListMatchingPairs -G -n 5 -i Dataset/matching/sfm_data.bin -o Dataset/matching/pair_list.txt
         log.info(f'List Pairs from {"GPS Exif" if geo_matching else "Video Adjacency"} Data...')
         pair_list_command = [openmvg_binary_path / 'openMVG_main_ListMatchingPairs', '-i', json_path, '-o', parilist_path]
-        if geo_method == 'non-rigid':
+        if geo_matching:
             pair_list_command.extend(['-G', '-n', str(matching_neighbors)])            
         else:
             pair_list_command.extend(['-V', '-n', str(matching_neighbors)])
@@ -202,6 +202,9 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--sfm', choices=sfm_options.keys())
 
+    parser.add_argument('--mvg-geo-method', default=None)
+    parser.add_argument('--mvg-geo-match', action='store_true')
+
     parser.add_argument('-v', action='count')
     parser.add_argument('--verbosity', type=int, default=1)
 
@@ -261,7 +264,7 @@ if __name__ == '__main__':
         #     log.info(f'Skipping - SFM: already exists at {mvg_path}')
         # else:
         log.info(f'Running {args.sfm} at {mvg_path}')
-        generate_sfm_mvg(images_path, mvg_path)
+        generate_sfm_mvg(images_path, mvg_path, geo_method=args.mvg_geo_method, geo_matching=args.mvg_geo_match)
     generate_sparse_time = time.time() - tic
 
 
