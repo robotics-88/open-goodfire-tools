@@ -108,34 +108,47 @@ def generate_sfm_mvg(images_path, openmvg_path, geo_method='non-rigid', geo_matc
     matches_path.mkdir(parents=True, exist_ok=True)
     reconstruction_path.mkdir(parents=True, exist_ok=True)
 
-    json_path = openmvg_path / 'sfm_data.json'
+    json_path = matches_path / 'sfm_data.json'
+    adjusted_json_path = openmvg_path / 'sfm_data.json'
     parilist_path = matches_path / 'pair_list.txt'
     
     with log.indent():
         log.info('List images...')
         # openMVG_main_SfMInit_ImageListing -d {camera_database_path} -i {images_path} -o matches -x 2400
-        image_list_command = [openmvg_binary_path / 'openMVG_main_SfMInit_ImageListing', '-d', camera_database_path, '-i', images_path, '-o', openmvg_path, '-f', '2400']
-        if geo_method == 'non-rigid':
+        # Artifact: sfm_data.json in the specified output directory
+        # TODO: try removing `-c 1`, and see of OpenSplat is mad about it.
+        image_list_command = [openmvg_binary_path / 'openMVG_main_SfMInit_ImageListing', '-d', camera_database_path, '-i', images_path, '-o', matches_path, '-f', '2400', '-c', '1' ]
+        if geo_method or geo_matching:
             image_list_command.extend(['-P', '--gps_to_xyz_method', '1'])
         subprocess.call(image_list_command)
         
         log.info('Compute Features...')
         # openMVG_main_ComputeFeatures -i matches/sfm_data.json -o matches
+        # Artifact: match files in the specifies output directory
         subprocess.call([openmvg_binary_path / 'openMVG_main_ComputeFeatures', '-i', json_path, '-o', matches_path ])
         
-        # openMVG_main_ListMatchingPairs -G -n 5 -i Dataset/matching/sfm_data.bin -o Dataset/matching/pair_list.txt
         log.info(f'List Pairs from {"GPS Exif" if geo_matching else "Video Adjacency"} Data...')
-        pair_list_command = [openmvg_binary_path / 'openMVG_main_ListMatchingPairs', '-i', json_path, '-o', parilist_path]
+        # openMVG_main_ListMatchingPairs -G -n 5 -i Dataset/matching/sfm_data.bin -o Dataset/matching/pair_list.txt
+        # Artifact: specified pairlist file
         if geo_matching:
+            pair_list_command = [openmvg_binary_path / 'openMVG_main_ListMatchingPairs', '-i', json_path, '-o', parilist_path]
             pair_list_command.extend(['-G', '-n', str(matching_neighbors)])            
+            subprocess.call(pair_list_command)
         else:
-            pair_list_command.extend(['-V', '-n', str(matching_neighbors)])
-        subprocess.call(pair_list_command)
+            pair_list_command = [openmvg_binary_path / 'openMVG_main_PairGenerator', '-i', json_path, '-o', parilist_path]
+            # pair_list_command.extend(['-m', 'CONTIGUOUS', '-c', '15'])            
+            subprocess.call(pair_list_command)
+        # pair_list_command = [openmvg_binary_path / 'openMVG_main_ListMatchingPairs', '-i', json_path, '-o', parilist_path]
+        # if geo_matching:
+        #     pair_list_command.extend(['-G', '-n', str(matching_neighbors)])            
+        # else:
+        #     pair_list_command.extend(['-V', '-n', str(matching_neighbors)])
+        # subprocess.call(pair_list_command)
         
 
         log.info('Compute Matches...')
         # openMVG_main_ComputeMatches -i matches/sfm_data.json -o matches
-        subprocess.call([openmvg_binary_path / 'openMVG_main_ComputeMatches', '-i', json_path, '-o', matches_path / 'matches.putative.bin'])
+        subprocess.call([openmvg_binary_path / 'openMVG_main_ComputeMatches', '-i', json_path, '-o', matches_path / 'matches.putative.bin', '-p', parilist_path])
 
         log.info('Filter Matches...')
         subprocess.call([openmvg_binary_path / 'openMVG_main_GeometricFilter', '-i', json_path, '-m', matches_path / 'matches.putative.bin' , '-g' , 'f' , '-o' , matches_path / 'matches.f.bin' ] )
@@ -153,13 +166,21 @@ def generate_sfm_mvg(images_path, openmvg_path, geo_method='non-rigid', geo_matc
 
             log.info('Do GPS Transformation...')
             # openMVG_main_geodesy_registration_to_gps_position -i Dataset/out_Reconstruction/sfm_data.bin -o Dataset/out_Reconstruction/sfm_data_adjusted.bin
-            subprocess.call([openmvg_binary_path / 'openMVG_main_geodesy_registration_to_gps_position', '-i', json_path, '-o', openmvg_path / 'sfm_data_adjusted.json'])
-            json_path = openmvg_path / 'sfm_data_adjusted.json'
+            subprocess.call([openmvg_binary_path / 'openMVG_main_geodesy_registration_to_gps_position', '-i', reconstruction_path / 'sfm_data.bin', '-o', adjusted_json_path])
+            # json_path = openmvg_path / 'sfm_data_adjusted.json'
+
+        else:
+            log.info('Recover SFM JSON...')
+            # openMVG_main_geodesy_registration_to_gps_position -i Dataset/out_Reconstruction/sfm_data.bin -o Dataset/out_Reconstruction/sfm_data_adjusted.bin
+            subprocess.call([openmvg_binary_path / 'openMVG_main_ConvertSfM_DataFormat', '-i', reconstruction_path / 'sfm_data.bin', '-o', adjusted_json_path])
+            # json_path = openmvg_path / 'sfm_data_adjusted.json'
+
 
 
         log.info('Colorize...')
         # openMVG_main_ComputeSfM_DataColor -i reconstruction/incremental/sfm_data.bin -o reconstruction/colorized.ply
-        subprocess.call([openmvg_binary_path / 'openMVG_main_ComputeSfM_DataColor', '-i', json_path, '-o', reconstruction_path / 'colorized.ply'])
+        # THIS MUST TAKE THE .BIN
+        subprocess.call([openmvg_binary_path / 'openMVG_main_ComputeSfM_DataColor', '-i', reconstruction_path / 'sfm_data.bin', '-o', openmvg_path / 'colorized.ply'])
 
     
 
@@ -185,7 +206,7 @@ def generate_ply(mounts, num_splats):
     
     log.info('running opensplat')
     with log.indent():
-        open_splat_command = f'/code/build/opensplat /data -n {num_splats} -o /data/output.splat'
+        open_splat_command = f'bash -c "cd /data && ls && /code/build/opensplat /data -n {num_splats} -o /data/output.splat"'
         run_in_docker(open_splat_command, 'open_splat:latest', mounts=mounts)
 
 
@@ -202,7 +223,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--sfm', choices=sfm_options.keys())
 
-    parser.add_argument('--mvg-geo-method', default=None)
+    parser.add_argument('--mvg-geo-method', choices=['rigid', 'non-rigid'])
     parser.add_argument('--mvg-geo-match', action='store_true')
 
     parser.add_argument('-v', action='count')
@@ -227,7 +248,7 @@ if __name__ == '__main__':
     odm_path =          output_path / 'odm'
     mvg_path =          output_path / 'mvg'
     
-    openmvg_path =      output_path / 'reconstruction'
+    # openmvg_path =      output_path / 'reconstruction'
     
     ply_path =          output_path / 'splat.ply'
 
@@ -260,11 +281,11 @@ if __name__ == '__main__':
             generate_sfm_odm(images_path, odm_path)
     
     elif args.sfm == 'mvg':
-        # if mvg_path.exists():
-        #     log.info(f'Skipping - SFM: already exists at {mvg_path}')
-        # else:
-        log.info(f'Running {args.sfm} at {mvg_path}')
-        generate_sfm_mvg(images_path, mvg_path, geo_method=args.mvg_geo_method, geo_matching=args.mvg_geo_match)
+        if mvg_path.exists():
+            log.info(f'Skipping - SFM: already exists at {mvg_path}')
+        else:
+            log.info(f'Running {args.sfm} at {mvg_path}')
+            generate_sfm_mvg(images_path, mvg_path, geo_method=args.mvg_geo_method, geo_matching=args.mvg_geo_match)
     generate_sparse_time = time.time() - tic
 
 
@@ -286,8 +307,10 @@ if __name__ == '__main__':
         elif args.sfm == 'odm':
             mounts.append(docker.types.Mount('/data/opensfm', str(odm_path.absolute()), type='bind'))
 
-        # elif args.sfm == 'openMVG':
-        #    mounts.append(docker.types.Mount('/data/reconstruction', str(openmvg_path.absolute()), type='bind'))
+        elif args.sfm == 'mvg':
+           mounts.append(docker.types.Mount(f'/data/{images_path}', str(images_path.absolute()), type='bind'))
+           mounts.append(docker.types.Mount('/data/sfm_data.json', str((mvg_path / 'sfm_data.json').absolute()), type='bind'))
+           mounts.append(docker.types.Mount('/data/colorized.ply', str((mvg_path / 'colorized.ply').absolute()), type='bind'))
 
         generate_ply(mounts, 100_000)
     generate_ply_time = time.time() - tic
