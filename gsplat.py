@@ -23,7 +23,7 @@ def run_in_docker(command, image, mounts):
     gpu_device = docker.types.DeviceRequest(count=-1, capabilities=[['gpu']])
 
     container = client.containers.run(image, command, auto_remove=True, runtime='nvidia', detach=True, device_requests=[gpu_device], mounts=mounts, environment={'PYTORCH_CUDA_ALLOC_CONF':'expandable_segments:True'})
-    log_stream = container.attach(stream=True, logs=True)
+    log_stream = container.attach(stream=True, logs=True, stderr=True, stdout=True)
     container.start()
 
     # TODO: make a fastlog pipe so I don't have to do these shenanigans
@@ -52,6 +52,8 @@ def run_in_docker(command, image, mounts):
         # Print the remaining log lines
         for fragment in fragments:
             log.debug(fragment)
+
+    log.debug(remnant)
 
 
 def generate_images(video_path, images_path, sample_rate, image_name_pattern):
@@ -298,7 +300,8 @@ if __name__ == '__main__':
 
         mounts = [
             docker.types.Mount('/data/images', str(images_path.absolute()), type='bind'),
-            docker.types.Mount('/data/output.splat', str(ply_path.absolute()), type='bind')
+            docker.types.Mount('/data/output.splat', str(ply_path.absolute()), type='bind'),
+            docker.types.Mount('/data/cameras.json', str(ply_path.with_name('cameras.json').absolute()), type='bind')
         ]
 
         if args.sfm == 'colmap':
