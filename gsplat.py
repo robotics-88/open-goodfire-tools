@@ -203,6 +203,7 @@ def generate_ply(mounts, num_splats):
         client.images.build(path='depend/OpenSplat', tag='open_splat:latest')
     
     ply_path.touch(exist_ok=True)
+    ply_path.with_name('cameras.json').touch(exist_ok=True)
 
     # Run the image
     
