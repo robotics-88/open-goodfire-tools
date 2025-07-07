@@ -34,7 +34,7 @@ ttops <- locate_trees(chm, lmf(ws = 3, hmin = 2))
 
 # Segment point cloud
 print("Segmenting...")
-algo  <- dalponte2016(chm_res, ttops, th_seed = 2, th = 1.5)
+algo  <- dalponte2016(chm, ttops)
 las <- segment_trees(las, algo)
 
 # Save output
