@@ -2,13 +2,13 @@
 import rasterio ,rasterio.warp
 
 
-def get_lat_long_bounds(geotiff_path):
+def get_lat_long_bounds(geotiff_path, crs=4326):
     with rasterio.open( geotiff_path ) as geotiff_file:
         # transform to EPSG:4326 (Geocentric lat long)
-        return rasterio.warp.transform_bounds(geotiff_file.crs, rasterio.crs.CRS.from_epsg(4326), *geotiff_file.bounds)
+        return rasterio.warp.transform_bounds(geotiff_file.crs, rasterio.crs.CRS.from_epsg(crs), *geotiff_file.bounds)
     
 
-def reporoject(geotiff, dst_crs):
+def reproject(geotiff, dst_crs):
     
     dst_transform = rasterio.warp.calculate_default_transform(geotiff, dst_crs)
     
