@@ -30,3 +30,22 @@ cd open-goodfire-tools/lidar
 source ../.env/bin/activate
 python process.py -vv --name mydataset
 ```
+
+## Troubleshooting
+
+### FlamMap downloads
+FlamMap often returns errors or HTML, e.g. when undergoing maintenance or capacity issues. If you have issues with the script, test using the RLandfire package in terminal.
+
+Start an R terminal with:
+```
+R
+```
+Then:
+```
+library(rlandfire)
+resp <- landfireAPIv2(products = "240EVC",
+                    aoi = c(-105.40207, 40.11224, -105.23526, 40.19613),
+                    email = "rlandfire@example.com",
+                    verbose = FALSE)
+```
+If this works, (TODO more assistance debugging our script). If this doesn't work, there is an issue on the LANDFIRE server side that is most likely resolved by waiting and trying again later.
