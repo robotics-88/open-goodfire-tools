@@ -15,7 +15,7 @@ if ! command -v nvidia-smi &> /dev/null; then
 fi
 
 
-packages_to_install="libudunits2-dev libgdal-dev libgeos-dev libproj-dev libxml2-dev"
+packages_to_install=""
 
 # Venv dep
 packages_to_install="$packages_to_install python3-venv"
@@ -61,9 +61,15 @@ if ! docker run --rm --runtime=nvidia --gpus all nvidia/cuda:12.4.0-devel-ubuntu
 fi
 
 # create venv, install python deps
-python3 -m venv .env
-source .env/bin/activate
-pip install -r requirements.txt
+if [ -d "../.env" ]; then
+    echo ".env virtual environment already exists. Skipping setup."
+else
+    pushd ..
+    python3 -m venv .env
+    source .env/bin/activate
+    pip install -r requirements.txt
+    popd
+fi
 
 
 # pull submodules
@@ -80,6 +86,3 @@ cmake --build .
 # build OpenSplat
 cd $root_dir/depend/OpenSplat
 docker buildx build -t open_splat:latest .
-
-
-# TODO: R dependencies
