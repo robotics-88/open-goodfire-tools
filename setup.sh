@@ -15,7 +15,7 @@ if ! command -v nvidia-smi &> /dev/null; then
 fi
 
 
-packages_to_install=""
+packages_to_install="libudunits2-dev libgdal-dev libgeos-dev libproj-dev libxml2-dev"
 
 # Venv dep
 packages_to_install="$packages_to_install python3-venv"
@@ -37,6 +37,8 @@ curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dear
   && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
     sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+sudo apt update
 
 # do not use -y; give the user a chance to review dependencies before they install
 sudo apt install $packages_to_install
