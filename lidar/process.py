@@ -1,5 +1,6 @@
 from scripts import generate_dbh
 from scripts import generate_trunk_density
+from scripts import download_landfire
 
 import utils.argument_actions
 import utils.geotiff_utils
@@ -76,24 +77,29 @@ def generate_diameter_at_base_height(las_segmented_path, chm_path,  dem_path, db
 def generate_trunk_density_file(dbh_path, td_path):
     return generate_trunk_density.generate_trunk_density(dbh_path, dem_path, td_path)
 
-def generate_flammap_data(zip_in_path, zip_tmp_path, dem_path, flammap_path):
+def generate_flammap_data(landfire_path, dem_path, flammap_path):
     # Get lat-long bounds with rasterio
-    dem_bounds = utils.geotiff_utils.get_lat_long_bounds(dem_path)
+    dem_bounds = utils.geotiff_utils.get_lat_long_bounds(dem_path, flammap_crs)
+    dem_str = ' '.join(map(str, dem_bounds))
     
     # Check that flammap data exists
-    if not zip_in_path.exists():
-        # TODO: If flammap data does not exist, pull it from appropriate source
-        log.warning(f'Use Flammap to download data for these bounds: {dem_bounds}')
-        quit()
+    if not landfire_path.exists():
+        log.warning(f'Using LANDFIRE to download data for these bounds: {dem_str}')
+        try:
+            download_landfire.download_flammap_data(flammap_crs, dem_str, output_path)
+            shutil.unpack_archive(landfire_path, extract_dir=flammap_path)
+        except Exception as e:
+            log.warning(f'❌ Failed to download LANDFIRE data: {e}')
+            return None
 
-    # Unzip
-    shutil.unpack_archive(zip_in_path, zip_tmp_path)
+    # Find flammap tif data
+    try:
+        tif_path = next(flammap_path.glob('*.tif'))
+        return tif_path
+    except StopIteration:
+        log.warning('⚠️ No .tif file found in flammap path.')
+        return None
 
-    # Find flammap tif data (just grab the first file with a .tif extension)
-    tif_path = next(zip_tmp_path.glob('*.tif'))
-
-    # Move Flammap tif data to correct location
-    shutil.move( str( tif_path ), str(flammap_path) )
 
 def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path):
     
@@ -158,8 +164,9 @@ def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_pa
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--input', action=utils.argument_actions.StorePathAction, default=Path('data/input'))
-    parser.add_argument('--output', action=utils.argument_actions.StorePathAction, default=Path('data/output'))
+    parser.add_argument('dataset', help='Name of the dataset (e.g., mydataset)')
+    input_path = Path('data') / parser.parse_args().dataset / 'input'
+    output_path = Path('data') / parser.parse_args().dataset / 'output'
 
     parser.add_argument('-v', action='count')
     parser.add_argument('--verbosity', type=int, default=1)
@@ -173,11 +180,12 @@ if __name__ == '__main__':
 
     tmp_folder_path = Path('data/tmp')
 
+    flammap_crs = 4326
 
     # TODO: check dependencies
     # TODO: make threadpool for each input file
 
-    for file in args.input.glob('**/*.laz'):
+    for file in input_path.glob('**/*.laz'):
         log.info(f'Processing input file {file}')
         with log.indent():
 
@@ -186,31 +194,27 @@ if __name__ == '__main__':
 
             step = 10
 
-            output_directory = args.output / filename
-            output_directory.mkdir(parents=True, exist_ok=True)
+            output_path.mkdir(parents=True, exist_ok=True)
 
-            las_path = (output_directory / filename).with_suffix('.laz')
-            filtered_las_path = las_path.with_name(filename + '_filtered.laz')
-            zip_in_path =           file.with_suffix('.zip')
-            # zip_tmp_path =          las_path.with_name(filename + '_flammap.tif')
-            zip_tmp_path =          tmp_folder_path / filename
+            filtered_las_path = output_path / (filename + '_filtered.laz')
 
-            dem_path =              las_path.with_name(filename + '_dem.tif')
-            slope_path =            las_path.with_name(filename + '_slope.tif')
-            aspect_path =           las_path.with_name(filename + '_aspect.tif')
-            chm_path =              las_path.with_name(filename + '_chm.tif')
-            las_segmented_path =    las_path.with_name(filename + '_segmented.laz')
-            dbh_path =              las_path.with_name(filename + '_dbh.csv')
-            trunk_density_path =    las_path.with_name(filename + '_trunk_density.tif')
-            flammap_path =          las_path.with_name(filename + '_flammap.tif')
-            merged_path =           las_path.with_name(filename + '_merged.tif')
+            dem_path =              output_path / (filename + '_dem.tif')
+            slope_path =            output_path / (filename + '_slope.tif')
+            aspect_path =           output_path / (filename + '_aspect.tif')
+            chm_path =              output_path / (filename + '_chm.tif')
+            las_segmented_path =    output_path / (filename + '_segmented.laz')
+            dbh_path =              output_path / (filename + '_dbh.csv')
+            trunk_density_path =    output_path / (filename + '_trunk_density.tif')
+            landfire_path =         output_path / ('landfire_data.zip')
+            flammap_path =          output_path / 'landfire_data'
+            merged_path =           output_path / (filename + '_merged.tif')
 
 
             if filtered_las_path.exists():
                 log.info(f'Skipping - Generate las file: already exists at {filtered_las_path}')
             else:
                 log.info(f'Generating filtered las file at {filtered_las_path}. This will take some time...')
-                filter_outliers(las_path, filtered_las_path)
+                filter_outliers(laz_path, filtered_las_path)
 
 
             if dem_path.exists() and chm_path.exists():
@@ -255,17 +259,21 @@ if __name__ == '__main__':
                 generate_trunk_density_file(dbh_path, trunk_density_path)
             
 
-            if flammap_path.exists():
-                log.info(f'Skipping - Generate flammap file: already exists at {flammap_path}')
+            if landfire_path.exists():
+                log.info(f'Skipping - Generate landfire file: already exists at {landfire_path}')
             else:
-                log.info(f'Generating flammap file at {flammap_path}')
-                generate_flammap_data(zip_in_path, zip_tmp_path, dem_path, flammap_path)
+                log.info(f'Generating landfire file at {landfire_path}')
+                flammap_path = generate_flammap_data(landfire_path, dem_path, flammap_path)
 
 
             if merged_path.exists():
+                # If we already have a merged file, we can skip this step
+                # But we still need to check if the flammap_path exists, because if not, LANDFIRE failed to download
                 log.info(f'Skipping - Generate merged file: already exists at {merged_path}')
-            else:
+            elif flammap_path is not None:
                 log.info(f'Generating merged file at {merged_path}')
                 generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path)
+            else:
+                log.warning(f'❌ Failed to generate merged file at {merged_path} because flammap data was not downloaded successfully. Please check the LANDFIRE download step.')
 
             quit()

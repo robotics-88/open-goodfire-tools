@@ -1,58 +1,117 @@
-import time, requests, json
+#!/usr/bin/env python3
 
-# 1) Define endpoints
-BASE   = "https://lfps.usgs.gov/arcgis/rest/services/" \
-         "LandfireProductService/GPServer/LandfireProductService"
-SUBMIT = BASE + "/submitJob"    # note: no trailing slash, no “?f=…” here
+import argparse
+import time
+import requests
+import json
+import sys
 
-JOB    = BASE + "/jobs"
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Submit a LANDFIRE GPServer job and download the resulting ZIP."
+    )
+    p.add_argument(
+        "--projection", "-p",
+        default="4326",
+        help="Output projection EPSG code (default: %(default)s)"
+    )
+    p.add_argument(
+        "--output", "-o",
+        default="./",
+        help="Output directory (default: %(default)s)"
+    )
+    p.add_argument(
+        "--aoi", "-a",
+        metavar="XMIN YMIN XMAX YMAX",
+        default="-105.40207 40.11224 -105.23526 40.19613",
+        help="Area of interest bbox as four floats in a string (default: %(default)s)"
+    )
+    p.add_argument(
+        "--layers", "-l",
+        default="ELEV2020;SLPD2020;ASP2020;220F40_22;220CC_22;220CH_22;220CBH_22;220CBD_22",
+            # elevation
+            # slope degrees
+            # aspect
+            # fuel models
+            # canopy cover
+            # canopy height
+            # canopy base height
+            # canopy bulk density
+        help="Semicolon-separated LANDFIRE layer codes (default: %(default)s)"
+    )
+    return p.parse_args()
 
-resp = requests.get(SUBMIT, params={
-    "f":                "json",
-    "Area_Of_Interest": "-105.40207 40.11224 -105.23526 40.19613",
-    "Output_Projection":"4326",
-    "Layer_List":       "200CC_19;200EVT",
-})
+def download_flammap_data(crs, aoi, output_dir=".", layers="ELEV2020;SLPD2020;ASP2020;220F40_22;220CC_22;220CH_22;220CBH_22;220CBD_22"):
 
-print("Status:", resp.status_code)
-print("Content-Type:", resp.headers.get("Content-Type"))
-print("Body:", resp.text[:500])   # first 500 chars
-resp.raise_for_status()
-data = resp.json()
-print("Submit response:", json.dumps(data, indent=2))
+    BASE   = "https://lfps.usgs.gov/api/job/"
+    SUBMIT = BASE + "submit"
+    JOBURL = BASE + "status"
 
-if "error" in data:
-    raise RuntimeError(f"Submit failed: {data['error']}")
+    ## TODO did they change the API format? When LANDFIRE server back up, check this:
 
-job_id = data["jobId"]
-print(f"Job submitted: {job_id}")
+    submit_params = {
+        "f":                  "JSON",              # response format
+        "Email":            "example@example.com",
+        "Area_of_Interest":             aoi,
+        "Output_Projection":       str(crs),
+        "Layer_List":       layers
+    }
 
-# 4) Poll until complete
-status = data["jobStatus"]
-while status not in ("esriJobSucceeded", "esriJobFailed"):
-    time.sleep(5)
-    status_data = requests.get(f"{JOB}/{job_id}", params={"f": "json"}).json()
-    status = status_data.get("jobStatus")
-    print("  status:", status)
+    # submit_params = {
+    #     "resample_res":     "30",
+    #     "email":            "example@example.com",
+    #     "bbox":             aoi,
+    #     "output_crs":       str(crs),
+    #     "Layer_List":       layers
+    # }
 
-if status != "esriJobSucceeded":
-    raise RuntimeError(f"Job {job_id} failed: {status_data}")
+    # 1) Submit the job
+    resp = requests.get(SUBMIT, params=submit_params)
+    print("→ URL   :", resp.url)
+    print("→ Code  :", resp.status_code)
+    print("→ Type  :", resp.headers.get("Content-Type"))
+    resp.raise_for_status()
 
-# 5) Fetch the output URL
-results = status_data["results"]
-# There's one output param named "Output_File"
-result_info = results["Output_File"]
-# The JSON gives you a URL path under paramUrl
-param_path = result_info["paramUrl"]       # e.g. "jobs/{jobId}/results/Output_File"
-detail = requests.get(f"{BASE}/{param_path}", params={"f": "json"}).json()
-zip_url = detail["value"]["url"]
-print("Download URL:", zip_url)
+    data = resp.json()
+    if "error" in data:
+        print("Submit failed:", json.dumps(data["error"], indent=2), file=sys.stderr)
+        sys.exit(1)
 
-# 6) Download the ZIP
-zip_resp = requests.get(zip_url, stream=True)
-zip_resp.raise_for_status()
-with open("landfire_data.zip", "wb") as f:
-    for chunk in zip_resp.iter_content(1024*1024):
-        f.write(chunk)
+    job_id = data["jobId"]
+    print(f"Job submitted: {job_id}")
 
-print("✅ landfire_data.zip saved")
+    # 2) Poll until complete
+    status = data["status"]
+    while status not in ("Succeeded", "Failed"):
+        time.sleep(5)
+        jr = requests.get(JOBURL, params={"JobId": job_id, "f": "JSON"})
+        jr.raise_for_status()
+        js = jr.json()
+        status = js.get("status", "")
+        print("  status:", status)
+
+    if status != "Succeeded":
+        print(f"Job {job_id} failed:", json.dumps(js, indent=2), file=sys.stderr)
+        sys.exit(1)
+
+    # 3) Get the output ZIP link
+    zip_url = js.get("outputFile")
+    if not zip_url:
+        print("❌ No outputFile found in response:", json.dumps(js, indent=2), file=sys.stderr)
+        sys.exit(1)
+
+    print("Download URL:", zip_url)
+
+    # 4) Download the ZIP
+    out_fname = f"{output_dir}/landfire_data.zip"
+    with requests.get(zip_url, stream=True) as zz:
+        zz.raise_for_status()
+        with open(out_fname, "wb") as f:
+            for chunk in zz.iter_content(1024 * 1024):
+                f.write(chunk)
+
+    print(f"✅ Saved to {out_fname}")
+
+if __name__ == "__main__":
+    args = parse_args()
+    download_flammap_data(args.projection, args.aoi, args.output, args.layers)
