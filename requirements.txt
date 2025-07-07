@@ -5,6 +5,7 @@ matplotlib
 argparse
 fastlog
 laspy
+lazrs
 
 rasterio
 
