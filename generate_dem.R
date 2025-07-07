@@ -8,20 +8,22 @@ if (length(args) < 2) {
 
 las_path <- args[1]
 dem_path <- args[2]
+chm_path <- args[3]
+segmented_path <- args[4]
 
 overwrite <- if (length(args) > 2 & args[3] == "-o") TRUE else FALSE
 
 # Load dependencies
-library("lidR")
+library("lasR")
 
-# Load file
-las <- readLAS(las_path)
+# ground classification, DTM & “standard” CHM (optional)
+classify_alg  <- classify_with_csf()
+dtm_alg       <- dtm(1, ofile = dem_path)
+chm_write_alg <- chm(0.2, ofile = chm_path)
 
-# Classify ground points
-las <- classify_ground(las, algorithm = csf())
+# assemble the full pipeline and execute
+full_pipeline <- classify_alg   +
+                 dtm_alg        +
+                 chm_write_alg
 
-# Drape a cloth on it
-dtm_cloth <- rasterize_terrain(las, algorithm = knnidw(k = 10L, p = 2))
-
-# Save output
-terra::writeRaster(dtm_cloth, dem_path, overwrite = overwrite)
+exec(full_pipeline, on = las_path, ncores = 16, progress = TRUE)
