@@ -21,7 +21,6 @@ print("Loading files...")
 las <- readLAS(las_path)
 chm <- terra::rast(chm_path)
 
-
 # Find treetops
 print("Finding Trees...")
 f <- function(x) {
@@ -31,13 +30,11 @@ f <- function(x) {
   return(y)
 }
 
-# ttops <- locate_trees(las, lmf(ws = 5))
-# ttops <- locate_trees(las, lmf(f))
-ttops <- locate_trees(chm, lmf(f))
+ttops <- locate_trees(chm, lmf(ws = 3, hmin = 2))
 
 # Segment point cloud
 print("Segmenting...")
-algo <- dalponte2016(chm, ttops)
+algo  <- dalponte2016(chm_res, ttops, th_seed = 2, th = 1.5)
 las <- segment_trees(las, algo)
 
 # Save output
