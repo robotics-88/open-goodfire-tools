@@ -1,5 +1,5 @@
-import generate_dbh
-import generate_trunk_density
+from scripts import generate_dbh
+from scripts import generate_trunk_density
 
 import utils.argument_actions
 import utils.geotiff_utils
@@ -68,7 +68,7 @@ def generate_aspect(dem_path, aspect_path):
     return subprocess.call(['gdaldem', 'aspect', dem_path, aspect_path])
 
 def generate_segmented_las(las_path, chm_path, las_segmented_path):
-    return subprocess.call(['./segment_las.R', las_path, chm_path, las_segmented_path])
+    return subprocess.call(['./scripts/segment_las.R', las_path, chm_path, las_segmented_path])
 
 def generate_diameter_at_base_height(las_segmented_path, chm_path,  dem_path, dbh_path):
     return generate_dbh.generate_dbh(las_segmented_path, chm_path,  dem_path, dbh_path)
@@ -217,7 +217,7 @@ if __name__ == '__main__':
                 log.info(f'Skipping - Generate dem and chm file: both already exists at {dem_path} and {chm_path}')
             else:
                 log.info(f'Generating dem and chm file at {dem_path} and {chm_path}.')
-                subprocess.call(['./generate_dem.R', filtered_las_path, dem_path, chm_path, las_segmented_path])
+                subprocess.call(['./scripts/generate_dem.R', filtered_las_path, dem_path, chm_path, las_segmented_path])
 
 
             if slope_path.exists():
