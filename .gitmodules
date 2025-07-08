@@ -1,6 +1,6 @@
 [submodule "depend/OpenSplat"]
-	path = depend/OpenSplat
+	path = video/depend/OpenSplat
 	url = https://github.com/pierotofy/OpenSplat.git
 [submodule "depend/openMVG"]
-	path = depend/openMVG
+	path = video/depend/openMVG
 	url = https://github.com/openMVG/openMVG.git
