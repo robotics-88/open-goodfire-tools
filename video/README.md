@@ -5,6 +5,12 @@ The data product we generate from video is called a splat. This is a visually ac
 ## Setup
 
 ### Install dependencies (Ubuntu instructions)
+Ensure submodules are checked out:
+```
+cd open-goodfire-tools
+git submodule update --init
+```
+Then run setup:
 ```
 cd open-goodfire-tools/video
 sudo ./setup.sh
