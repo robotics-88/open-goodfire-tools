@@ -19,7 +19,7 @@ library("lasR")
 # ground classification, DTM & “standard” CHM (optional)
 classify_alg  <- classify_with_csf()
 dtm_alg       <- dtm(1, ofile = dem_path)
-chm_write_alg <- chm(0.2, ofile = chm_path)
+chm_write_alg <- chm(1, ofile = chm_path)
 
 # assemble the full pipeline and execute
 full_pipeline <- classify_alg   +
@@ -27,3 +27,15 @@ full_pipeline <- classify_alg   +
                  chm_write_alg
 
 exec(full_pipeline, on = las_path, ncores = 16, progress = TRUE)
+
+library(terra)
+
+# Load rasters
+dem <- rast(dem_path)
+chm <- rast(chm_path)
+
+# Mask DEM where CHM is NA
+dem_masked <- mask(dem, chm)
+
+# Overwrite the DEM with masked version
+writeRaster(dem_masked, dem_path, overwrite=TRUE)

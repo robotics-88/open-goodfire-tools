@@ -50,8 +50,7 @@ def compute_density_grid(points, xmin, xmax, ymin, ymax, resolution, stat='count
     )
     return grid, x_bins, y_bins
 
-def compute_fuel_volume(before_file, after_file, output_folder, resolution=1.0):
-    output_file = output_folder / "volume_difference.tif"
+def compute_fuel_volume(before_file, after_file, output_file, resolution=1.0):
     resolution = 1.0
     with laspy.open(before_file) as lasf:
         crs = lasf.header.parse_crs()
@@ -132,6 +131,6 @@ def compute_fuel_volume(before_file, after_file, output_folder, resolution=1.0):
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print("Usage: python fuelvolume.py before.laz after.laz output_folder")
+        print("Usage: python fuelvolume.py before.laz after.laz output.tif")
         sys.exit(1)
     compute_fuel_volume(sys.argv[1], sys.argv[2], sys.argv[3])

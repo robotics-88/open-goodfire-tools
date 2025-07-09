@@ -275,7 +275,14 @@ if __name__ == '__main__':
             
 
             if landfire_path.exists():
-                log.info(f'Skipping - Generate landfire file: already exists at {landfire_path}')
+                log.info(f'Skipping download - Generate landfire file: already exists at {landfire_path}')
+                if not flammap_path.exists():
+                    log.info(f'Unpacking existing LANDFIRE data to {flammap_path}')
+                    shutil.unpack_archive(landfire_path, extract_dir=flammap_path)
+                    try:
+                        flammap_path = next(flammap_path.glob('*.tif'))
+                    except StopIteration:
+                        log.warning('⚠️ No .tif file found in flammap path.')
             else:
                 log.info(f'Generating landfire file at {landfire_path}')
                 flammap_path = generate_flammap_data(landfire_path, dem_path, flammap_path)
@@ -312,8 +319,12 @@ if __name__ == '__main__':
                         log.info(f'✅ Successfully registered and saved adjusted point cloud to: {adjusted_laz_path}')
 
                     if adjusted_laz_path.exists():
-                        generate_fuelvolume.compute_fuel_volume(filtered_las_path, adjusted_laz_path, output_path, resolution=1.0)
-                        log.info(f'✅ Successfully generated fuel volume data and saved to: {fuel_volume_path}')
+                        if fuel_volume_path.exists():
+                            log.info(f'Skipping - Generate fuel volume file: already exists at {fuel_volume_path}')
+                        else:
+                            log.info(f'Generating fuel volume file at {fuel_volume_path}')
+                            generate_fuelvolume.compute_fuel_volume(filtered_las_path, adjusted_laz_path, fuel_volume_path, resolution=1.0)
+                            log.info(f'✅ Successfully generated fuel volume data and saved to: {fuel_volume_path}')
                     else:
                         log.error(f'❌ Failed to save adjusted point cloud to: {adjusted_laz_path}. Please check the registration step.')
 
