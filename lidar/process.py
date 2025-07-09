@@ -4,6 +4,7 @@ from scripts import generate_dbh
 from scripts import generate_fuelvolume
 from scripts import generate_trunk_density
 from scripts import register_laz
+from scripts.merge_flammap_layers import generate_merged_data
 
 import utils.geotiff_utils
 
@@ -14,7 +15,6 @@ import subprocess
 from pathlib import Path
 
 import shutil
-import rasterio
 import json
 
 
@@ -101,66 +101,6 @@ def generate_flammap_data(landfire_path, dem_path, flammap_path):
     except StopIteration:
         log.warning('⚠️ No .tif file found in flammap path.')
         return None
-
-
-def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path):
-    
-    # Open input files
-    with rasterio.open(flammap_path) as flammap_file, \
-         rasterio.open(dem_path) as dem_file, \
-         rasterio.open(chm_path) as chm_file, \
-         rasterio.open(aspect_path) as aspect_file, \
-         rasterio.open(slope_path) as slope_file:
-
-        # Defining the goal:
-        # I want to end up with one geotiff file
-        # It should contain the layer descriptions from the flammap file
-        # It should be in the CRS and shape of the smallest of our input files (we will just use the DEM file for now)
-        # It should contain all of our input layers, and fill the rest with flammap data
-        #       said flammap data must be rescaled to target CRS and shape
-
-        target_crs = dem_file.crs
-        target_shape = dem_file.shape
-        target_transform = dem_file.transform
-
-        # Descriptions
-        # ('US_ELEV2020', 'US_SLPD2020', 'US_ASP2020', 'US_240FBFM40', 'US_240CC', 'US_240CH', 'US_240CBH', 'US_240CBD')
-        desc_map = {
-            'US_ELEV2020': dem_file,
-            'US_240CBH': chm_file,
-            'US_ASP2020': aspect_file,
-            'US_SLPD2020': slope_file,
-        }
-        
-        # Merge layers into output file
-        with rasterio.open(merged_path, 'w', driver=flammap_file.driver,
-                           height=target_shape[0], width=target_shape[1],
-                           count=len(flammap_file.indexes),
-                           dtype=dem_file.dtypes[0],
-                           crs=target_crs, transform=target_transform) as merged_file:
-
-            # For each layer
-            for i, description in zip(flammap_file.indexes, flammap_file.descriptions):
-
-                # If this is a layer that we generated, use that
-                if description in desc_map.keys():
-                    file = desc_map[description]
-                    index = 1
-                
-                # Else, use the flammap data
-                else:
-                    file = flammap_file
-                    index = i
-
-                # Force use nearest-neighbor sampling for fuel model layer. Its important that we only use the existing values and not interpolate, because we later do lookups based on those values
-                if description == 'US_240FBFM40':
-                    resampling_method = rasterio.warp.Resampling.nearest
-                else:
-                    resampling_method = rasterio.warp.Resampling.bilinear
-
-
-                # Downsample flammap data
-                rasterio.warp.reproject(rasterio.band(file, index), rasterio.band(merged_file, i), resampling=resampling_method)
 
 
 if __name__ == '__main__':
@@ -279,10 +219,10 @@ if __name__ == '__main__':
                 if not flammap_path.exists():
                     log.info(f'Unpacking existing LANDFIRE data to {flammap_path}')
                     shutil.unpack_archive(landfire_path, extract_dir=flammap_path)
-                    try:
-                        flammap_path = next(flammap_path.glob('*.tif'))
-                    except StopIteration:
-                        log.warning('⚠️ No .tif file found in flammap path.')
+                try:
+                    flammap_path = next(flammap_path.glob('*.tif'))
+                except StopIteration:
+                    log.warning('⚠️ No .tif file found in flammap path.')
             else:
                 log.info(f'Generating landfire file at {landfire_path}')
                 flammap_path = generate_flammap_data(landfire_path, dem_path, flammap_path)
