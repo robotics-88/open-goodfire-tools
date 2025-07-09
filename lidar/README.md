@@ -28,8 +28,22 @@ Run the following:
 ```
 cd open-goodfire-tools/lidar
 source ../.env/bin/activate
-python process.py -vv --name mydataset
+python process.py mydataset
 ```
+
+To experiment with our test dataset, download it using our script:
+```
+cd open-goodfire-tools/lidar
+./scripts/download_sample.sh
+```
+Then run:
+
+```
+cd open-goodfire-tools/lidar
+source ../.env/bin/activate
+python process.py test
+```
+
 
 ## Troubleshooting
 
