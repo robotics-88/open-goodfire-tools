@@ -1,8 +1,10 @@
-from scripts import generate_dbh
-from scripts import generate_trunk_density
-from scripts import download_landfire
 
-import utils.argument_actions
+from scripts import download_landfire
+from scripts import generate_dbh
+from scripts import generate_fuelvolume
+from scripts import generate_trunk_density
+from scripts import register_laz
+
 import utils.geotiff_utils
 
 from fastlog import log
@@ -165,8 +167,21 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('dataset', help='Name of the dataset (e.g., mydataset)')
-    input_path = Path('data') / parser.parse_args().dataset / 'input'
-    output_path = Path('data') / parser.parse_args().dataset / 'output'
+    dataset = parser.parse_args().dataset
+    dataset = dataset.replace(' ', '_')
+    input_path = Path('data') / dataset / 'input/before'
+    output_path = Path('data') / dataset / 'output'
+
+    if not input_path.exists():
+        parser.error(f"Input folder does not exist: {input_path}")
+        quit()
+
+    do_after = True
+    after_path = input_path.parent / 'after'
+    print(f"Checking for 'after' folder at {after_path}")
+    if not after_path.exists():
+        parser.error(f"'after' folder does not exist: {after_path}. Proceeding without it.")
+        do_after = False
 
     parser.add_argument('-v', action='count')
     parser.add_argument('--verbosity', type=int, default=1)
@@ -190,24 +205,24 @@ if __name__ == '__main__':
         with log.indent():
 
             laz_path = file
-            filename = file.stem.rsplit('.', 1)[0]
 
             step = 10
 
             output_path.mkdir(parents=True, exist_ok=True)
 
-            filtered_las_path = output_path / (filename + '_filtered.laz')
+            filtered_las_path = output_path / (dataset + '_filtered.laz')
 
-            dem_path =              output_path / (filename + '_dem.tif')
-            slope_path =            output_path / (filename + '_slope.tif')
-            aspect_path =           output_path / (filename + '_aspect.tif')
-            chm_path =              output_path / (filename + '_chm.tif')
-            las_segmented_path =    output_path / (filename + '_segmented.laz')
-            dbh_path =              output_path / (filename + '_dbh.csv')
-            trunk_density_path =    output_path / (filename + '_trunk_density.tif')
-            landfire_path =         output_path / ('landfire_data.zip')
+            dem_path =              output_path / (dataset + '_dem.tif')
+            slope_path =            output_path / (dataset + '_slope.tif')
+            aspect_path =           output_path / (dataset + '_aspect.tif')
+            chm_path =              output_path / (dataset + '_chm.tif')
+            las_segmented_path =    output_path / (dataset + '_segmented.laz')
+            dbh_path =              output_path / (dataset + '_dbh.csv')
+            trunk_density_path =    output_path / (dataset + '_trunk_density.tif')
+            landfire_path =         output_path / 'landfire_data.zip'
             flammap_path =          output_path / 'landfire_data'
-            merged_path =           output_path / (filename + '_merged.tif')
+            merged_path =           output_path / (dataset + '_merged.tif')
+            fuel_volume_path =      output_path / (dataset + '_fuel_volume.tif')
 
 
             if filtered_las_path.exists():
@@ -275,5 +290,31 @@ if __name__ == '__main__':
                 generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_path, merged_path)
             else:
                 log.warning(f'❌ Failed to generate merged file at {merged_path} because flammap data was not downloaded successfully. Please check the LANDFIRE download step.')
+
+
+            if do_after:
+                after_laz_path = after_path / 'after.laz'
+                if not after_laz_path.exists():
+                    log.warning(f'❌ After file does not exist: {after_laz_path}. Skipping fuel volume step.')
+                else:
+                    filtered_after_laz_path = after_path / 'after_filtered.laz'
+                    if filtered_after_laz_path.exists():
+                        log.info(f'Skipping - Generate filtered after.laz file: already exists at {filtered_after_laz_path}')
+                    else:
+                        log.info(f'Generating filtered after.laz file at {filtered_after_laz_path}')
+                        filter_outliers(after_laz_path, filtered_after_laz_path)
+                    log.info(f'Registering {filtered_las_path} with {filtered_after_laz_path}')
+                    adjusted_laz_path = after_path / 'after-adjusted.laz'
+                    if adjusted_laz_path.exists():
+                        log.info(f'Skipping - Adjusted point cloud already exists at {adjusted_laz_path}')
+                    else:
+                        register_laz.register_laz(filtered_las_path, filtered_after_laz_path)
+                        log.info(f'✅ Successfully registered and saved adjusted point cloud to: {adjusted_laz_path}')
+
+                    if adjusted_laz_path.exists():
+                        generate_fuelvolume.compute_fuel_volume(filtered_las_path, adjusted_laz_path, output_path, resolution=1.0)
+                        log.info(f'✅ Successfully generated fuel volume data and saved to: {fuel_volume_path}')
+                    else:
+                        log.error(f'❌ Failed to save adjusted point cloud to: {adjusted_laz_path}. Please check the registration step.')
 
             quit()

@@ -1,6 +1,7 @@
 numpy
 scipy
 matplotlib
+open3d
 
 argparse
 fastlog
@@ -8,6 +9,7 @@ laspy
 lazrs
 
 rasterio
+pyproj
 
 scikit-image
 
