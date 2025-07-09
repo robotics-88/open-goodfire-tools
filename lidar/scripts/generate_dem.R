@@ -30,7 +30,7 @@ exec(full_pipeline, on = las_path, ncores = 16, progress = TRUE)
 
 library(terra)
 
-# Load rasters
+# Load rasters to mask DEM, CHM is only present in lidar range areas
 dem <- rast(dem_path)
 chm <- rast(chm_path)
 
@@ -39,3 +39,13 @@ dem_masked <- mask(dem, chm)
 
 # Overwrite the DEM with masked version
 writeRaster(dem_masked, dem_path, overwrite=TRUE)
+
+
+# Now use DEM to convert CHM to AGL altitudes
+cbh_agl  <- chm - dem
+
+# (optional) mask out non‐canopy areas:
+cbh_agl_masked <- mask(cbh_agl, chm)
+
+# overwrite or write out new file
+writeRaster(cbh_agl_masked, chm_path, overwrite=TRUE)

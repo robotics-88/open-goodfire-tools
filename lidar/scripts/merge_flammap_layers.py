@@ -33,7 +33,7 @@ def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_pa
                 if description in desc_map:
                     # Reproject both user and flammap data to target grid
                     user_src = desc_map[description]
-                    user_data = np.zeros(target_shape, dtype=target_dtype)
+                    user_data = np.full(target_shape, np.nan, dtype=np.dtype(target_dtype))
                     fallback_data = np.zeros(target_shape, dtype=target_dtype)
 
                     rasterio.warp.reproject(
@@ -56,16 +56,12 @@ def generate_merged_data(flammap_path, dem_path, chm_path, aspect_path, slope_pa
                     # Use nodata from user raster or assume 0 if missing
                     nodata_val = user_src.nodata
                     if nodata_val is not None:
-                        user_mask = (user_data == nodata_val)
+                        user_mask = (user_data == nodata_val) | np.isnan(user_data)
                     else:
                         # Guess a nodata value only if no nodata is defined
                         most_common = np.bincount(user_data.flatten()).argmax()
                         ratio = np.sum(user_data == most_common) / user_data.size
                         user_mask = (user_data == most_common) if ratio > 0.95 else np.full(user_data.shape, False)
-
-                    if description == 'US_ELEV2020':
-                        # Special case for US_ELEV2020
-                        user_mask = np.isnan(user_data) | (user_data == 0)
 
                     fused = np.where(user_mask, fallback_data, user_data)
 
